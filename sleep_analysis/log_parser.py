@@ -1,0 +1,202 @@
+import datetime
+import re
+from typing import Dict, List
+
+import pandas as pd
+
+QUESTION_TO_COLUMN = {
+    '1b. What time start winding down?': 'wind_down_start_time',
+    '1.2b. What time did you get into bed & commit to sleep?': 'bed_time',
+    '6. What time did you wake up?': 'wake_up_time',
+    '7. What time did you get out of bed?': 'get_out_of_bed_time',
+    '14. If alcohol, how many standard drinks?': 'alcohol_drinks',
+}
+
+EXPECTED_TIMES = {
+    'wind_down_start_time': datetime.time(22, 0),  # 10pm
+    'bed_time': datetime.time(23, 0),              # 11pm
+    'wake_up_time': datetime.time(7, 0),           # 7am
+    'get_out_of_bed_time': datetime.time(7, 30),   # 7:30am
+}
+
+_TIME_RE = re.compile(r'^(\d{1,2})(?::(\d{2}))?(am|pm)?$', re.IGNORECASE)
+
+
+def _parse_time(value: str) -> datetime.time | None:
+    if value in {'.', '', None}:
+        return None
+    value = value.strip()
+    try:
+        m = _TIME_RE.match(value)
+        if m:
+            hour = int(m.group(1))
+            minute = int(m.group(2) or 0)
+            ampm = m.group(3)
+            if ampm:
+                ampm = ampm.lower()
+                if ampm == 'pm' and hour != 12:
+                    hour += 12
+                if ampm == 'am' and hour == 12:
+                    hour = 0
+            return datetime.time(hour % 24, minute)
+        # Fallback to pandas to_datetime
+        t = pd.to_datetime(value).time()
+        return t
+    except Exception:
+        return None
+
+
+def _parse_duration(value: str) -> float | None:
+    """Parse duration like '7:31' as hours."""
+    if value in {'.', '', None}:
+        return None
+    parts = value.split(':')
+    if len(parts) == 2:
+        h, m = parts
+        return int(h) + int(m) / 60
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+def _avg_time(times: List[datetime.time]) -> datetime.time | None:
+    times = [t for t in times if t is not None]
+    if not times:
+        return None
+    total_minutes = sum(t.hour * 60 + t.minute for t in times)
+    avg_minutes = total_minutes / len(times)
+    hour = int(avg_minutes // 60) % 24
+    minute = int(avg_minutes % 60)
+    return datetime.time(hour, minute)
+
+
+def _avg_offset(times: List[datetime.time], expected: datetime.time) -> float | None:
+    times = [t for t in times if t is not None]
+    if not times:
+        return None
+    exp_minutes = expected.hour * 60 + expected.minute
+    diffs = [abs((t.hour * 60 + t.minute) - exp_minutes) for t in times]
+    return sum(diffs) / len(diffs)
+
+
+def _parse_week_header(line: str) -> tuple[str, List[datetime.date]] | None:
+    line = line.strip()
+    m = re.search(r'(\d+)/(\d+)-\D*(\d+)(?:/(\d+))?', line)
+    if not m:
+        return None
+    sm, sd, ed, em = m.groups()
+    sm = int(sm); sd = int(sd)
+    em = int(em) if em else sm
+    ed = int(ed)
+    year = 2025
+    start = datetime.date(year, sm, sd)
+    days = [start + datetime.timedelta(days=i) for i in range(7)]
+    label = f"{start.month:02d}{start.day:02d}-{em:02d}{ed:02d}"
+    return label, days
+
+
+def parse_log(path: str) -> pd.DataFrame:
+    with open(path, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+
+    records: List[Dict] = []
+    week_label = None
+    week_days: List[datetime.date] = []
+    week_data: Dict[str, List] = {}
+
+    for raw_line in lines:
+        line = raw_line.rstrip('\n')
+        if not line.strip() or line.strip().startswith('...'):
+            continue
+        expanded = line.replace('\t', '    ')
+        indent = len(expanded) - len(expanded.lstrip(' '))
+        stripped = line.strip()
+        if indent == 4:  # week header
+            if week_label and week_days:
+                # flush previous week
+                for i, day in enumerate(week_days):
+                    record = {'date': day, 'week_label': week_label}
+                    for q, values in week_data.items():
+                        if i < len(values):
+                            record[q] = values[i]
+                    records.append(record)
+                week_data = {}
+            res = _parse_week_header(stripped)
+            if res:
+                week_label, week_days = res
+            else:
+                week_label = None
+                week_days = []
+        elif indent == 8 and week_label:
+            if '?' in stripped:
+                q_part, values_part = stripped.split('?', 1)
+                question = q_part.strip()
+                values = values_part.strip().split()
+                col = QUESTION_TO_COLUMN.get(question)
+                parsed_vals = []
+                for v in values:
+                    if col and 'time' in col:
+                        parsed_vals.append(_parse_time(v))
+                    elif col == 'alcohol_drinks':
+                        parsed_vals.append(float(v) if v != '.' else 0.0)
+                    else:
+                        # generic: try duration or float
+                        val = _parse_duration(v)
+                        if val is None:
+                            try:
+                                val = float(v)
+                            except ValueError:
+                                val = None
+                        parsed_vals.append(val)
+                if col:
+                    week_data.setdefault(col, parsed_vals)
+        else:
+            # deeper indents are notes -> ignore
+            continue
+
+    if week_label and week_days:
+        for i, day in enumerate(week_days):
+            record = {'date': day, 'week_label': week_label}
+            for q, values in week_data.items():
+                if i < len(values):
+                    record[q] = values[i]
+            records.append(record)
+
+    df = pd.DataFrame(records)
+    return df
+
+
+def compute_weekly_stats(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+    weekly_dfs = {}
+    for label, wk_df in df.groupby('week_label'):
+        stats: Dict[str, List] = {}
+        stats['total_drinks'] = [wk_df.get('alcohol_drinks', pd.Series(dtype=float)).fillna(0).sum()]
+        for col in ['wind_down_start_time', 'bed_time', 'wake_up_time', 'get_out_of_bed_time']:
+            times = wk_df[col].dropna().tolist() if col in wk_df else []
+            avg_t = _avg_time(times)
+            if avg_t:
+                stats[f'avg_{col}'] = [avg_t.strftime('%H:%M')]
+                off = _avg_offset(times, EXPECTED_TIMES[col])
+                stats[f'avg_offset_{col}'] = [off]
+        week_stats_df = pd.DataFrame(stats)
+        weekly_dfs[label] = week_stats_df
+    return weekly_dfs
+
+
+def compute_overall_stats(weekly_stats: Dict[str, pd.DataFrame]) -> pd.DataFrame:
+    if not weekly_stats:
+        return pd.DataFrame()
+    combined = pd.concat(weekly_stats.values(), ignore_index=True)
+    numeric_cols = combined.select_dtypes(include='number').columns
+    time_cols = [c for c in combined.columns if c.startswith('avg_') and combined[c].dtype == object and ':' in combined[c].iloc[0]] if not combined.empty else []
+    overall = {}
+    for col in numeric_cols:
+        overall[col] = combined[col].mean()
+    for col in time_cols:
+        times = [pd.to_datetime(t).time() for t in combined[col] if isinstance(t, str)]
+        avg_t = _avg_time(times)
+        if avg_t:
+            overall[col] = avg_t.strftime('%H:%M')
+    return pd.DataFrame([overall])
+
