@@ -92,13 +92,18 @@ def _avg_offset(times: List[datetime.time], expected: datetime.time) -> float | 
 
 def _parse_week_header(line: str) -> tuple[str, List[datetime.date]] | None:
     line = line.strip()
-    m = re.search(r'(\d+)/(\d+)-\D*(\d+)(?:/(\d+))?', line)
+    m = re.search(r'(\d+)/(\d+)-\s*(\d+)(?:/(\d+))?', line)
     if not m:
         return None
-    sm, sd, ed, em = m.groups()
-    sm = int(sm); sd = int(sd)
-    em = int(em) if em else sm
-    ed = int(ed)
+    sm, sd, part3, part4 = m.groups()
+    sm = int(sm)
+    sd = int(sd)
+    if part4 is not None:
+        em = int(part3)
+        ed = int(part4)
+    else:
+        em = sm
+        ed = int(part3)
     year = 2025
     start = datetime.date(year, sm, sd)
     days = [start + datetime.timedelta(days=i) for i in range(7)]
@@ -141,7 +146,7 @@ def parse_log(path: str) -> pd.DataFrame:
         elif indent == 8 and week_label:
             if '?' in stripped:
                 q_part, values_part = stripped.split('?', 1)
-                question = q_part.strip()
+                question = (q_part + '?').strip()
                 values = values_part.strip().split()
                 col = QUESTION_TO_COLUMN.get(question)
                 parsed_vals = []
