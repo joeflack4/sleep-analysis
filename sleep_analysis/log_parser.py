@@ -13,10 +13,10 @@ QUESTION_TO_COLUMN = {
 }
 
 EXPECTED_TIMES = {
-    'wind_down_start_time': datetime.time(22, 0),  # 10pm
-    'bed_time': datetime.time(23, 0),              # 11pm
-    'wake_up_time': datetime.time(7, 0),           # 7am
-    'get_out_of_bed_time': datetime.time(7, 30),   # 7:30am
+    'wind_down_start_time': datetime.time(2, 50),
+    'bed_time': datetime.time(4, 0),
+    'wake_up_time': datetime.time(11, 30),
+    'get_out_of_bed_time': datetime.time(11, 35),
 }
 
 _TIME_RE = re.compile(r'^(\d{1,2})(?::(\d{2}))?(am|pm)?$', re.IGNORECASE)

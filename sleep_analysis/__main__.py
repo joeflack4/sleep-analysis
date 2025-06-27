@@ -1,12 +1,12 @@
 import argparse
 import os
 
-from .log_parser import parse_log, compute_weekly_stats, compute_overall_stats
+from sleep_analysis.log_parser import parse_log, compute_weekly_stats, compute_overall_stats
 
 
 def main():
     parser = argparse.ArgumentParser(description="Sleep log analysis")
-    parser.add_argument('logfile', help='Path to sleep log txt file')
+    parser.add_argument('--logfile', default='input/log.txt', help='Path to sleep log txt file')
     parser.add_argument('--output-dir', default='output', help='Directory for output files')
     args = parser.parse_args()
 
