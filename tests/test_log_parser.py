@@ -189,3 +189,15 @@ def test_compute_overall_stats(sample_log_path):
     overall = compute_overall_stats(weekly)
     assert len(overall) == 1
     assert overall['total_drinks'].iloc[0] == pytest.approx((3 + 7) / 2)
+
+
+def test_compute_weekly_stats_handles_missing_week_label():
+    df = pd.DataFrame({'foo': [1, 2]})
+    weekly = compute_weekly_stats(df)
+    assert weekly == {}
+
+
+def test_compute_weekly_stats_empty_dataframe():
+    df = pd.DataFrame({})
+    weekly = compute_weekly_stats(df)
+    assert weekly == {}
