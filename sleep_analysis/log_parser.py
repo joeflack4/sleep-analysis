@@ -91,19 +91,26 @@ def _avg_offset(times: List[datetime.time], expected: datetime.time) -> float | 
 
 
 def _parse_week_header(line: str) -> tuple[str, List[datetime.date]] | None:
+    """Parse a week header line.
+
+    The log sometimes prefixes the month/day pairs with a day-of-week, e.g.
+    ``"Fri4/25-Wed4/30"``.  The previous implementation expected the day of
+    week to be absent which caused a failure to match and resulted in an empty
+    dataframe.  This version extracts all numbers from the line and interprets
+    them as month/day pairs.
+    """
+
     line = line.strip()
-    m = re.search(r'(\d+)/(\d+)-\s*(\d+)(?:/(\d+))?', line)
-    if not m:
+    nums = [int(n) for n in re.findall(r"\d+", line)]
+    if len(nums) < 3:
         return None
-    sm, sd, part3, part4 = m.groups()
-    sm = int(sm)
-    sd = int(sd)
-    if part4 is not None:
-        em = int(part3)
-        ed = int(part4)
+
+    sm, sd = nums[0], nums[1]
+    if len(nums) >= 4:
+        em, ed = nums[2], nums[3]
     else:
-        em = sm
-        ed = int(part3)
+        em, ed = sm, nums[2]
+
     year = 2025
     start = datetime.date(year, sm, sd)
     days = [start + datetime.timedelta(days=i) for i in range(7)]
@@ -206,7 +213,13 @@ def compute_overall_stats(weekly_stats: Dict[str, pd.DataFrame]) -> pd.DataFrame
         return pd.DataFrame()
     combined = pd.concat(weekly_stats.values(), ignore_index=True)
     numeric_cols = combined.select_dtypes(include='number').columns
-    time_cols = [c for c in combined.columns if c.startswith('avg_') and combined[c].dtype == object and ':' in combined[c].iloc[0]] if not combined.empty else []
+    time_cols = []
+    if not combined.empty:
+        for c in combined.columns:
+            if c.startswith('avg_') and combined[c].dtype == object:
+                first = next((v for v in combined[c] if v is not None), None)
+                if isinstance(first, str) and ':' in first:
+                    time_cols.append(c)
     overall = {}
     for col in numeric_cols:
         overall[col] = combined[col].mean()
