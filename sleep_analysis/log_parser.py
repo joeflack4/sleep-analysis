@@ -184,6 +184,8 @@ def parse_log(path: str) -> pd.DataFrame:
 
 def compute_weekly_stats(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     weekly_dfs = {}
+    if df.empty or 'week_label' not in df.columns:
+        return weekly_dfs
     for label, wk_df in df.groupby('week_label'):
         stats: Dict[str, List] = {}
         stats['total_drinks'] = [wk_df.get('alcohol_drinks', pd.Series(dtype=float)).fillna(0).sum()]
