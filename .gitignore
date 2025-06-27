@@ -30,5 +30,7 @@ token.txt
 env/
 .env
 input/
+!tests/input/
+!tests/input/logs.txt
 output/
 db.tsv
