@@ -50,8 +50,18 @@ def _parse_duration(value: str) -> float | None:
     """Parse duration like '7:31' as hours."""
     if value in {'.', '', None}:
         return None
+    value = value.strip()
+    # If the value looks like a time of day with am/pm, interpret it as hours
+    # since midnight rather than failing with a ValueError. This allows values
+    # such as ``9:42pm`` to be parsed even when they were not recognised as
+    # time fields by the caller.
+    m = _TIME_RE.match(value)
+    if m and m.group(3):  # has am/pm
+        t = _parse_time(value)
+        if t is not None:
+            return t.hour + t.minute / 60
     parts = value.split(':')
-    if len(parts) == 2:
+    if len(parts) == 2 and all(p.isdigit() for p in parts):
         h, m = parts
         return int(h) + int(m) / 60
     try:
