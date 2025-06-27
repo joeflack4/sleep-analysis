@@ -1,18 +1,156 @@
 import unittest
 import sys
 import types
+import datetime
+import os
+
+"""Minimal pandas stub used when the real package isn't available."""
+
+class _Series(list):
+    def __init__(self, data=None, dtype=None):
+        if data is None:
+            data = []
+        super().__init__(data)
+    def notna(self):
+        return _Series([x is not None for x in self])
+
+    def dropna(self):
+        return _Series([x for x in self if x is not None])
+
+    def fillna(self, value):
+        return _Series([value if x is None else x for x in self])
+
+    def sum(self):
+        return sum(x for x in self if x is not None)
+
+    def tolist(self):
+        return list(self)
+
+    def mean(self):
+        vals = [x for x in self if x is not None]
+        return sum(vals) / len(vals) if vals else 0
+
+    def all(self):
+        return all(self)
+
+    @property
+    def iloc(self):
+        class _ILoc:
+            def __init__(self, data):
+                self.data = data
+
+            def __getitem__(self, idx):
+                return self.data[idx]
+
+        return _ILoc(self)
+
+    @property
+    def dtype(self):
+        for x in self:
+            if isinstance(x, (int, float)):
+                return float
+            if x is not None:
+                return object
+        return object
+
+
+class _DataFrame:
+    def __init__(self, data):
+        if isinstance(data, dict):
+            keys = list(data.keys())
+            rows = max(len(v) for v in data.values()) if data else 0
+            self._rows = [
+                {k: data[k][i] if i < len(data[k]) else None for k in keys}
+                for i in range(rows)
+            ]
+        elif isinstance(data, list):
+            self._rows = [dict(row) for row in data]
+        else:
+            self._rows = []
+
+    def __len__(self):
+        return len(self._rows)
+
+    def __contains__(self, key):
+        return any(key in r for r in self._rows)
+
+    def __getitem__(self, key):
+        return _Series([r.get(key) for r in self._rows])
+
+    def get(self, key, default):
+        return self[key] if key in self else default
+
+    @property
+    def empty(self):
+        return len(self._rows) == 0
+
+    @property
+    def columns(self):
+        cols = []
+        for r in self._rows:
+            for k in r:
+                if k not in cols:
+                    cols.append(k)
+        return cols
+
+    def groupby(self, key):
+        groups = {}
+        for r in self._rows:
+            groups.setdefault(r.get(key), []).append(r)
+        for k, rows in groups.items():
+            yield k, _DataFrame(rows)
+
+    def select_dtypes(self, include=None):
+        if include and (include == 'number' or include == ['number']):
+            numeric = []
+            for col in self.columns:
+                if all(isinstance(r.get(col), (int, float, type(None))) for r in self._rows):
+                    numeric.append(col)
+
+            class _Cols(list):
+                @property
+                def columns(self):
+                    return self
+
+            return _Cols(numeric)
+        return []
+
+
+def _concat(dfs, ignore_index=True):
+    rows = []
+    for df in dfs:
+        rows.extend(df._rows)
+    return _DataFrame(rows)
+
+
+def _to_datetime(val):
+    if isinstance(val, datetime.time):
+        return datetime.datetime.combine(datetime.date.today(), val)
+    for fmt in ("%H:%M", "%I:%M%p", "%H:%M:%S"):
+        try:
+            return datetime.datetime.strptime(str(val), fmt)
+        except ValueError:
+            continue
+    raise ValueError(f"Unrecognised time format: {val}")
+
+
+pd_stub = types.ModuleType("pandas")
+pd_stub.DataFrame = _DataFrame
+pd_stub.Series = _Series
+pd_stub.concat = _concat
+pd_stub.to_datetime = _to_datetime
+sys.modules.setdefault("pandas", pd_stub)
+
+# Ensure the project root is on the import path so ``sleep_analysis`` can be
+# imported when tests are executed directly.
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
 
 import pandas as pd
 import pytest
 
 from sleep_analysis.log_parser import parse_log, compute_weekly_stats, compute_overall_stats, _parse_duration
-
-# Provide a minimal pandas stub so the module can be imported without the real
-# dependency when running in constrained environments.
-pd_stub = types.ModuleType("pandas")
-pd_stub.to_datetime = lambda x: None
-pd_stub.DataFrame = object
-sys.modules.setdefault("pandas", pd_stub)
 
 
 class TestParseDuration(unittest.TestCase):
