@@ -1,0 +1,12 @@
+    1/1-1/7
+        1b. What time start winding down? 10pm 10pm 10pm 10pm 10pm 10pm 10pm
+        1.2b. What time did you get into bed & commit to sleep? 11pm 11pm 11pm 11pm 11pm 11pm 11pm
+        6. What time did you wake up? 7am 7am 7am 7am 7am 7am 7am
+        7. What time did you get out of bed? 7:15am 7:15am 7:15am 7:15am 7:15am 7:15am 7:15am
+        14. If alcohol, how many standard drinks? 0 1 0 1 0 1 0
+    1/8-1/14
+        1b. What time start winding down? 21:30 21:30 21:30 21:30 21:30 21:30 21:30
+        1.2b. What time did you get into bed & commit to sleep? 22:30 22:30 22:30 22:30 22:30 22:30 22:30
+        6. What time did you wake up? 06:30 06:30 06:30 06:30 06:30 06:30 06:30
+        7. What time did you get out of bed? 06:45 06:45 06:45 06:45 06:45 06:45 06:45
+        14. If alcohol, how many standard drinks? 1 1 1 1 1 1 1
