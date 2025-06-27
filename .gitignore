@@ -27,6 +27,8 @@ tests/output/*
 
 # Custom
 token.txt
+env/
 .env
+input/
 output/
 db.tsv
