@@ -1,4 +1,5 @@
 import datetime
+import math
 import re
 from typing import Dict, List
 
@@ -223,9 +224,9 @@ def compute_weekly_stats(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
             times = wk_df[col].dropna().tolist() if col in wk_df else []
             avg_t = _avg_time(times)
             if avg_t:
-                stats[f'avg_{col}'] = [avg_t.strftime('%H:%M')]
+                stats[f'{col}_avg'] = [avg_t.strftime('%I:%M%p').lower()]
                 off = _avg_offset(times, EXPECTED_TIMES[col])
-                stats[f'avg_offset_{col}'] = [off]
+                stats[f'{col}_offset_avg'] = [off]
         week_stats_df = pd.DataFrame(stats)
         weekly_dfs[label] = week_stats_df
     return weekly_dfs
@@ -239,17 +240,34 @@ def compute_overall_stats(weekly_stats: Dict[str, pd.DataFrame]) -> pd.DataFrame
     time_cols = []
     if not combined.empty:
         for c in combined.columns:
-            if c.startswith('avg_') and combined[c].dtype == object:
+            if c.endswith('_avg') and combined[c].dtype == object:
                 first = next((v for v in combined[c] if v is not None), None)
                 if isinstance(first, str) and ':' in first:
                     time_cols.append(c)
     overall = {}
+    # numeric columns
     for col in numeric_cols:
-        overall[col] = combined[col].mean()
+        base = col[:-4] if col.endswith('_avg') else col
+        values = [v for v in combined[col] if v is not None]
+        mean_val = sum(values) / len(values) if values else 0
+        var = sum((v - mean_val) ** 2 for v in values) / len(values) if values else 0
+        std_val = math.sqrt(var) if values else 0
+        overall[f'{col}'] = mean_val  # preserve original avg column
+        overall[f'{base}_mean'] = mean_val
+        overall[f'{base}_std'] = std_val
+    # time columns
     for col in time_cols:
+        base = col[:-4]
         times = [pd.to_datetime(t).time() for t in combined[col] if isinstance(t, str)]
-        avg_t = _avg_time(times)
-        if avg_t:
-            overall[col] = avg_t.strftime('%H:%M')
+        if times:
+            minutes = [t.hour * 60 + t.minute for t in times]
+            mean_minutes = sum(minutes) / len(minutes)
+            var = sum((m - mean_minutes) ** 2 for m in minutes) / len(minutes)
+            std_minutes = math.sqrt(var)
+            avg_t = _avg_time(times)
+            if avg_t:
+                overall[col] = avg_t.strftime('%I:%M%p').lower()
+                overall[f'{base}_mean'] = avg_t.strftime('%I:%M%p').lower()
+            overall[f'{base}_std'] = std_minutes
     return pd.DataFrame([overall])
 
