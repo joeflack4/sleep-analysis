@@ -113,7 +113,16 @@ def _parse_week_header(line: str) -> tuple[str, List[datetime.date]] | None:
 
     year = 2025
     start = datetime.date(year, sm, sd)
-    days = [start + datetime.timedelta(days=i) for i in range(7)]
+    end = datetime.date(year, em, ed)
+    # number of days in the range inclusive
+    delta = (end - start).days
+    if delta < 0:
+        # If the end date wraps to the next month, assume it is within the same
+        # year and add a month rollover
+        # Example: "12/30-01/04" -> end month < start month
+        end = datetime.date(year + (1 if em < sm else 0), em, ed)
+        delta = (end - start).days
+    days = [start + datetime.timedelta(days=i) for i in range(delta + 1)]
     label = f"{start.month:02d}{start.day:02d}-{em:02d}{ed:02d}"
     return label, days
 
@@ -186,6 +195,20 @@ def parse_log(path: str) -> pd.DataFrame:
             records.append(record)
 
     df = pd.DataFrame(records)
+    # Detect duplicate dates which would indicate a parsing bug in the log.
+    if len(df):
+        seen = set()
+        dup_set = set()
+        for d in df['date']:
+            if d in seen:
+                dup_set.add(d)
+            else:
+                seen.add(d)
+        if dup_set:
+            raise ValueError(
+                f"Duplicate dates found in log: {sorted(dup_set)}"
+            )
+
     return df
 
 
