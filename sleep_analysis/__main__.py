@@ -1,3 +1,4 @@
+"""Analyze sleep data"""
 import argparse
 import os
 
@@ -24,6 +25,7 @@ def _week_range_for_date(d: datetime.date) -> tuple[datetime.date, datetime.date
 
 
 def main():
+    """Main func"""
     parser = argparse.ArgumentParser(description="Sleep log analysis")
     parser.add_argument('--logfile', default='input/log.txt', help='Path to sleep log txt file')
     parser.add_argument('--output-dir', default='output', help='Directory for output files')
@@ -73,24 +75,25 @@ def main():
     # ------------------------------------------------------------------
     # Stats by calendar week (Sunday-Saturday)
     # ------------------------------------------------------------------
-    df_week = df.copy()
-    df_week['week_label'] = df_week['week']
-    week_stats = compute_weekly_stats(df_week)
-    by_week_rows = []
-    by_week_dir = os.path.join(args.output_dir, 'by-week')
-    os.makedirs(by_week_dir, exist_ok=True)
-    for label, wk_df in week_stats.items():
-        wk_df.to_csv(os.path.join(by_week_dir, f'stats-{label}.tsv'), sep='\t', index=False)
-        out_df = wk_df.copy()
-        out_df.insert(0, 'week', label)
-        by_week_rows.append(out_df)
-    if by_week_rows:
-        by_week_df = pd.concat(by_week_rows, ignore_index=True)
-        by_week_df.to_csv(
-            os.path.join(args.output_dir, 'stats-by-week.tsv'),
-            sep='\t',
-            index=False,
-        )
+    # - Save 1 TSV per week
+    # df_week = df.copy()
+    # df_week['week_label'] = df_week['week']
+    # week_stats = compute_weekly_stats(df_week)
+    # by_week_rows = []
+    # by_week_dir = os.path.join(args.output_dir, 'by-week')
+    # os.makedirs(by_week_dir, exist_ok=True)
+    # for label, wk_df in week_stats.items():
+    #     wk_df.to_csv(os.path.join(by_week_dir, f'stats-{label}.tsv'), sep='\t', index=False)
+    #     out_df = wk_df.copy()
+    #     out_df.insert(0, 'week', label)
+    #     by_week_rows.append(out_df)
+    # if by_week_rows:
+    #     by_week_df = pd.concat(by_week_rows, ignore_index=True)
+    #     by_week_df.to_csv(
+    #         os.path.join(args.output_dir, 'stats-by-week.tsv'),
+    #         sep='\t',
+    #         index=False,
+    #     )
 
     # Overall stats from the log-defined date ranges
     overall = compute_overall_stats(weekly_stats)
