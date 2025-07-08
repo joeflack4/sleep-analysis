@@ -150,7 +150,13 @@ if ROOT not in sys.path:
 import pandas as pd
 import pytest
 
-from sleep_analysis.log_parser import parse_log, compute_weekly_stats, compute_overall_stats, _parse_duration
+from sleep_analysis.log_parser import (
+    parse_log,
+    compute_weekly_stats,
+    compute_overall_stats,
+    _parse_duration,
+    _parse_week_header,
+)
 
 
 class TestParseDuration(unittest.TestCase):
@@ -201,3 +207,31 @@ def test_compute_weekly_stats_empty_dataframe():
     df = pd.DataFrame({})
     weekly = compute_weekly_stats(df)
     assert weekly == {}
+
+
+def test_parse_week_header_partial_week():
+    label, days = _parse_week_header('Fri4/25-Wed4/30')
+    assert label == '0425-0430'
+    assert len(days) == 6
+    assert days[0] == datetime.date(2025, 4, 25)
+    assert days[-1] == datetime.date(2025, 4, 30)
+
+
+def test_parse_week_header_cross_year():
+    label, days = _parse_week_header('Tue12/30-Mon1/05')
+    assert label == '1230-0105'
+    assert len(days) == 7
+    assert days[0] == datetime.date(2025, 12, 30)
+    assert days[-1] == datetime.date(2026, 1, 5)
+
+
+def test_parse_log_duplicate_dates(tmp_path):
+    log = tmp_path / 'log.txt'
+    log.write_text(
+        '    1/1-1/4\n'
+        '        6. What time did you wake up? 7am 7am 7am 7am\n'
+        '    1/4-1/7\n'
+        '        6. What time did you wake up? 7am 7am 7am 7am\n'
+    )
+    with pytest.raises(ValueError):
+        parse_log(str(log))
