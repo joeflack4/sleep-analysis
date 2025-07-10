@@ -72,22 +72,51 @@ def _parse_duration(value: str) -> float | None:
 
 
 def _avg_time(times: List[datetime.time]) -> datetime.time | None:
+    """Return the circular mean of ``times`` on a 24 hour clock."""
+
     times = [t for t in times if t is not None]
     if not times:
         return None
-    total_minutes = sum(t.hour * 60 + t.minute for t in times)
-    avg_minutes = total_minutes / len(times)
-    hour = int(avg_minutes // 60) % 24
-    minute = int(avg_minutes % 60)
+
+    angles = []
+    for t in times:
+        minutes = t.hour * 60 + t.minute
+        angles.append(minutes / (24 * 60) * 2 * math.pi)
+
+    sin_sum = sum(math.sin(a) for a in angles)
+    cos_sum = sum(math.cos(a) for a in angles)
+    if sin_sum == 0 and cos_sum == 0:
+        return None
+
+    mean_angle = math.atan2(sin_sum / len(angles), cos_sum / len(angles))
+    if mean_angle < 0:
+        mean_angle += 2 * math.pi
+
+    mean_minutes = mean_angle * (24 * 60) / (2 * math.pi)
+    hour = int(mean_minutes // 60) % 24
+    minute = int(round(mean_minutes % 60))
+    if minute == 60:
+        hour = (hour + 1) % 24
+        minute = 0
     return datetime.time(hour, minute)
 
 
 def _avg_offset(times: List[datetime.time], expected: datetime.time) -> float | None:
+    """Average absolute offset from ``expected`` in minutes using circular distance."""
+
     times = [t for t in times if t is not None]
     if not times:
         return None
+
     exp_minutes = expected.hour * 60 + expected.minute
-    diffs = [abs((t.hour * 60 + t.minute) - exp_minutes) for t in times]
+
+    def _circ_diff(m: int) -> int:
+        diff = abs(m - exp_minutes) % (24 * 60)
+        if diff > 12 * 60:
+            diff = 24 * 60 - diff
+        return diff
+
+    diffs = [_circ_diff(t.hour * 60 + t.minute) for t in times]
     return sum(diffs) / len(diffs)
 
 
