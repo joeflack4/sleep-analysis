@@ -1,4 +1,5 @@
 import datetime
+import math
 import re
 from typing import Dict, List
 
@@ -18,6 +19,12 @@ EXPECTED_TIMES = {
     'wake_up_time': datetime.time(11, 30),
     'get_out_of_bed_time': datetime.time(11, 35),
 }
+
+# Time of day considered the start of a new sleep-wake cycle. Times
+# earlier than this are treated as belonging to the *next* calendar
+# day when computing averages.
+EVENING_START = datetime.time(17, 0)
+_EVENING_START_MINUTES = EVENING_START.hour * 60 + EVENING_START.minute
 
 _TIME_RE = re.compile(r'^(\d{1,2})(?::(\d{2}))?(am|pm)?$', re.IGNORECASE)
 
@@ -71,22 +78,36 @@ def _parse_duration(value: str) -> float | None:
 
 
 def _avg_time(times: List[datetime.time]) -> datetime.time | None:
+    """Return the circular mean of the given times of day."""
     times = [t for t in times if t is not None]
     if not times:
         return None
-    total_minutes = sum(t.hour * 60 + t.minute for t in times)
-    avg_minutes = total_minutes / len(times)
-    hour = int(avg_minutes // 60) % 24
+    angles = [
+        2 * math.pi * (((t.hour * 60 + t.minute) - _EVENING_START_MINUTES) % 1440) / 1440
+        for t in times
+    ]
+    avg_x = sum(math.cos(a) for a in angles) / len(angles)
+    avg_y = sum(math.sin(a) for a in angles) / len(angles)
+    avg_angle = math.atan2(avg_y, avg_x)
+    if avg_angle < 0:
+        avg_angle += 2 * math.pi
+    avg_minutes = (_EVENING_START_MINUTES + (avg_angle / (2 * math.pi)) * 1440) % 1440
+    hour = int(avg_minutes // 60)
     minute = int(avg_minutes % 60)
     return datetime.time(hour, minute)
 
 
 def _avg_offset(times: List[datetime.time], expected: datetime.time) -> float | None:
+    """Return the average absolute deviation from ``expected`` in minutes."""
     times = [t for t in times if t is not None]
     if not times:
         return None
-    exp_minutes = expected.hour * 60 + expected.minute
-    diffs = [abs((t.hour * 60 + t.minute) - exp_minutes) for t in times]
+    exp_angle = 2 * math.pi * (((expected.hour * 60 + expected.minute) - _EVENING_START_MINUTES) % 1440) / 1440
+    diffs = []
+    for t in times:
+        angle = 2 * math.pi * (((t.hour * 60 + t.minute) - _EVENING_START_MINUTES) % 1440) / 1440
+        diff_angle = math.atan2(math.sin(angle - exp_angle), math.cos(angle - exp_angle))
+        diffs.append(abs(diff_angle / (2 * math.pi) * 1440))
     return sum(diffs) / len(diffs)
 
 
@@ -151,6 +172,11 @@ def parse_log(path: str) -> pd.DataFrame:
                     for q, values in week_data.items():
                         if i < len(values):
                             record[q] = values[i]
+                    bed = record.get('bed_time')
+                    if isinstance(bed, datetime.time) and bed < EVENING_START:
+                        record['date_real'] = day + datetime.timedelta(days=1)
+                    else:
+                        record['date_real'] = day
                     records.append(record)
                 week_data = {}
             res = _parse_week_header(stripped)
@@ -192,6 +218,11 @@ def parse_log(path: str) -> pd.DataFrame:
             for q, values in week_data.items():
                 if i < len(values):
                     record[q] = values[i]
+            bed = record.get('bed_time')
+            if isinstance(bed, datetime.time) and bed < EVENING_START:
+                record['date_real'] = day + datetime.timedelta(days=1)
+            else:
+                record['date_real'] = day
             records.append(record)
 
     df = pd.DataFrame(records)
