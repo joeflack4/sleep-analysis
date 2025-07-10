@@ -72,22 +72,46 @@ def _parse_duration(value: str) -> float | None:
 
 
 def _avg_time(times: List[datetime.time]) -> datetime.time | None:
+    """Return the circular average of a list of times."""
     times = [t for t in times if t is not None]
     if not times:
         return None
-    total_minutes = sum(t.hour * 60 + t.minute for t in times)
-    avg_minutes = total_minutes / len(times)
+
+    angles = []
+    for t in times:
+        minutes = t.hour * 60 + t.minute
+        angle = math.tau * minutes / (24 * 60)
+        angles.append(angle)
+
+    avg_cos = sum(math.cos(a) for a in angles) / len(angles)
+    avg_sin = sum(math.sin(a) for a in angles) / len(angles)
+    avg_angle = math.atan2(avg_sin, avg_cos)
+    if avg_angle < 0:
+        avg_angle += math.tau
+
+    avg_minutes = avg_angle * (24 * 60) / math.tau
     hour = int(avg_minutes // 60) % 24
     minute = int(avg_minutes % 60)
     return datetime.time(hour, minute)
 
 
 def _avg_offset(times: List[datetime.time], expected: datetime.time) -> float | None:
+    """Return the average absolute difference in minutes from ``expected``.
+
+    The difference wraps around the 24 hour clock, ensuring that times such as
+    ``9pm`` and ``3am`` are treated as being 6 hours apart rather than 18.
+    """
     times = [t for t in times if t is not None]
     if not times:
         return None
+
     exp_minutes = expected.hour * 60 + expected.minute
-    diffs = [abs((t.hour * 60 + t.minute) - exp_minutes) for t in times]
+    diffs = []
+    for t in times:
+        minutes = t.hour * 60 + t.minute
+        diff = abs(minutes - exp_minutes)
+        diff = min(diff, 24 * 60 - diff)
+        diffs.append(diff)
     return sum(diffs) / len(diffs)
 
 
@@ -152,6 +176,15 @@ def parse_log(path: str) -> pd.DataFrame:
                     for q, values in week_data.items():
                         if i < len(values):
                             record[q] = values[i]
+                    # Determine the real calendar date for the entry based on
+                    # the bed time.  Times before 5pm are considered part of
+                    # the following calendar day.
+                    bed_t = record.get('bed_time')
+                    if isinstance(bed_t, datetime.time) and bed_t < datetime.time(17, 0):
+                        record['date_real'] = day + datetime.timedelta(days=1)
+                    else:
+                        record['date_real'] = day
+
                     records.append(record)
                 week_data = {}
             res = _parse_week_header(stripped)
@@ -193,6 +226,11 @@ def parse_log(path: str) -> pd.DataFrame:
             for q, values in week_data.items():
                 if i < len(values):
                     record[q] = values[i]
+            bed_t = record.get('bed_time')
+            if isinstance(bed_t, datetime.time) and bed_t < datetime.time(17, 0):
+                record['date_real'] = day + datetime.timedelta(days=1)
+            else:
+                record['date_real'] = day
             records.append(record)
 
     df = pd.DataFrame(records)

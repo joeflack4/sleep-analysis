@@ -156,6 +156,7 @@ from sleep_analysis.log_parser import (
     compute_overall_stats,
     _parse_duration,
     _parse_week_header,
+    _avg_time,
 )
 
 
@@ -235,3 +236,30 @@ def test_parse_log_duplicate_dates(tmp_path):
     )
     with pytest.raises(ValueError):
         parse_log(str(log))
+
+
+def test_avg_time_wraparound():
+    times = [
+        datetime.time(6, 50),
+        datetime.time(6, 23),
+        datetime.time(5, 5),
+        datetime.time(4, 46),
+        datetime.time(6, 30),
+        datetime.time(21, 42),
+    ]
+    avg = _avg_time(times)
+    assert avg == datetime.time(5, 11)
+
+
+def test_parse_log_date_real(tmp_path):
+    log = tmp_path / 'log.txt'
+    log.write_text(
+        '    4/25-4/30\n'
+        '        1.2b. What time did you get into bed & commit to sleep? 6:50am 6:23am 5:05am 4:46am 6:30am 9:42pm\n'
+    )
+    df = parse_log(str(log))
+    # first entry wraps to next calendar day
+    assert df['date'].iloc[0] == datetime.date(2025, 4, 25)
+    assert df['date_real'].iloc[0] == datetime.date(2025, 4, 26)
+    # last entry is same day
+    assert df['date_real'].iloc[-1] == datetime.date(2025, 4, 30)
