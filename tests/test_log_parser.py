@@ -115,6 +115,13 @@ class _DataFrame:
             return _Cols(numeric)
         return []
 
+    def to_csv(self, path, sep=',', index=True):
+        cols = self.columns
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(sep.join(cols) + '\n')
+            for r in self._rows:
+                f.write(sep.join('' if r.get(c) is None else str(r.get(c)) for c in cols) + '\n')
+
 
 def _concat(dfs, ignore_index=True):
     rows = []
@@ -158,7 +165,8 @@ from sleep_analysis.log_parser import (
     _avg_offset,
     _parse_duration,
     _parse_week_header,
-)
+) 
+from sleep_analysis.__main__ import _format_range
 
 
 class TestParseDuration(unittest.TestCase):
@@ -196,7 +204,8 @@ def test_compute_overall_stats(sample_log_path):
     weekly = compute_weekly_stats(df)
     overall = compute_overall_stats(weekly)
     assert len(overall) == 1
-    assert overall['total_drinks_mean'].iloc[0] == pytest.approx((3 + 7) / 2)
+    assert 'total_drinks_mean' not in overall.columns
+    assert overall['total_drinks_median'].iloc[0] == pytest.approx(5)
 
 
 def test_compute_weekly_stats_handles_missing_week_label():
@@ -238,7 +247,6 @@ def test_parse_log_duplicate_dates(tmp_path):
     with pytest.raises(ValueError):
         parse_log(str(log))
 
-
 def test_avg_time_across_midnight():
     times = [
         datetime.time(6, 50),
@@ -278,3 +286,35 @@ def test_avg_offset_circular():
     times = [datetime.time(23, 0), datetime.time(1, 0)]
     offset = _avg_offset(times, datetime.time(0, 0))
     assert offset == 60
+
+
+def test_single_week_range_label():
+    df = parse_log('tests/input/log-single-week.txt')
+    assert len(df) == 3
+    start = df['date'].iloc[0]
+    end = df['date'].iloc[-1]
+    label = _format_range(start, end)
+    assert label == '2025--06-19--06-21'
+
+
+def test_parse_log_handles_blank_lines_and_notes(tmp_path):
+    log = tmp_path / 'log.txt'
+    log.write_text(
+        '    Thu6/19-Sat21\n\n'
+        '        1b. What time start winding down? 2:20am 2:50am 2:10am\n\n'
+        '        1.3b. Wind-down activities (if not reading book)\n'
+        '            Day 1: note\n\n'
+        '        6. What time did you wake up? 7am 7am 7am\n'
+        '            (comment)\n\n'
+        '        7. What time did you get out of bed? 7:15am 7:15am 7:15am\n\n'
+        '    ...\n'
+    )
+    df = parse_log(str(log))
+    assert len(df) == 3
+
+
+def test_parse_log_week_header_without_indent():
+    df = parse_log('tests/input/long-single-week.txt')
+    assert len(df) == 3
+    assert set(df['week_label']) == {'0619-0621'}
+    assert df['wind_down_start_time'][0] is not None
