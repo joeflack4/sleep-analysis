@@ -7,6 +7,7 @@ import pandas as pd
 
 from sleep_analysis.log_parser import (
     parse_log,
+    export_single_weeks_csv,
     compute_weekly_stats,
     compute_overall_stats,
 )
@@ -55,6 +56,7 @@ def run_analysis(logfile: str, output_dir: str, label_files: bool = False) -> No
     df.drop(columns=['week_label']).to_csv(os.path.join(output_dir, data_name), sep='\t', index=False)
 
     weekly_stats: dict[str, pd.DataFrame] = compute_weekly_stats(df)
+    export_single_weeks_csv(logfile, os.path.join(output_dir, "single-weeks-by-log-range"))
 
     if not label_files:
         # create additional stats using date ranges found in the log itself

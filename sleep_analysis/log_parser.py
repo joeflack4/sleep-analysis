@@ -1,6 +1,8 @@
 import datetime
 import math
 import re
+import os
+import csv
 from typing import Dict, List
 
 import pandas as pd
@@ -399,4 +401,79 @@ def compute_overall_stats(weekly_stats: Dict[str, pd.DataFrame]) -> pd.DataFrame
                 overall[f'{base}_median'] = med_t.strftime('%I:%M%p').lower()
 
     return pd.DataFrame([overall])
+
+
+
+def _format_range(start: datetime.date, end: datetime.date) -> str:
+    """Return date range label like '2025--01-01--01-07'."""
+    return f"{start.year:04d}--{start:%m-%d}--{end:%m-%d}"
+
+
+def _format_raw_value(value: str) -> str:
+    """Format ``value`` for CSV output, normalizing times when possible."""
+    if value is None:
+        return ''
+    value = value.strip()
+    if '|' not in value and value.lower().endswith(('am', 'pm')):
+        t = _parse_time(value)
+        if t is not None:
+            return datetime.datetime.combine(datetime.date(1900, 1, 1), t).strftime('%-I:%M %p')
+    return value
+
+
+def export_single_weeks_csv(logfile: str, output_dir: str) -> None:
+    """Write per-week CSVs of raw log values extracted from ``logfile``."""
+    with open(logfile, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+
+    week_label = None
+    week_days: List[datetime.date] = []
+    week_data: Dict[str, List[str]] = {}
+
+    for raw_line in lines:
+        line = raw_line.rstrip('\n')
+        if not line.strip() or line.strip().startswith('...'):
+            continue
+
+        expanded = line.replace('\t', '    ')
+        indent = len(expanded) - len(expanded.lstrip(' '))
+        stripped = line.strip()
+
+        if _WEEK_HEADER_RE.match(stripped):
+            if week_label and week_days:
+                _write_week_csv(output_dir, week_days, week_data)
+                week_data = {}
+            res = _parse_week_header(stripped)
+            if res:
+                week_label, week_days = res
+            else:
+                week_label = None
+                week_days = []
+        elif indent >= 4 and week_label:
+            if '?' in stripped:
+                q_part, values_part = stripped.split('?', 1)
+                question = (q_part + '?').strip()
+                values = values_part.strip().split()
+                week_data[question] = values
+
+    if week_label and week_days:
+        _write_week_csv(output_dir, week_days, week_data)
+
+
+def _write_week_csv(output_dir: str, days: List[datetime.date], data: Dict[str, List[str]]) -> None:
+    os.makedirs(output_dir, exist_ok=True)
+    start = days[0]
+    end = days[-1]
+    label = _format_range(start, end)
+    path = os.path.join(output_dir, f'data-{label}.csv')
+    header = [''] + [f'{d.month}/{d.day}' for d in days]
+    with open(path, 'w', encoding='utf-8', newline='') as f:
+        writer = csv.writer(f, lineterminator='\n')
+        writer.writerow(header)
+        for question, values in data.items():
+            row = [question]
+            for i in range(len(days)):
+                val = values[i] if i < len(values) else ''
+                row.append(_format_raw_value(val))
+            writer.writerow(row)
 
