@@ -171,29 +171,33 @@ def _parse_week_header(line: str) -> tuple[str, List[datetime.date]] | None:
     """
 
     line = line.strip()
-    nums = [int(n) for n in re.findall(r"\d+", line)]
+    nums: list[int] = [int(n) for n in re.findall(r"\d+", line)]
     if len(nums) < 3:
         return None
 
+    sm: int
+    sd: int
+    em: int
+    ed: int
     sm, sd = nums[0], nums[1]
     if len(nums) >= 4:
         em, ed = nums[2], nums[3]
     else:
         em, ed = sm, nums[2]
 
-    year = 2025
-    start = datetime.date(year, sm, sd)
-    end = datetime.date(year, em, ed)
+    year: int = 2025
+    start: datetime.date = datetime.date(year, sm, sd)
+    end: datetime.date = datetime.date(year, em, ed)
     # number of days in the range inclusive
-    delta = (end - start).days
+    delta: int = (end - start).days
     if delta < 0:
         # If the end date wraps to the next month, assume it is within the same
         # year and add a month rollover
         # Example: "12/30-01/04" -> end month < start month
         end = datetime.date(year + (1 if em < sm else 0), em, ed)
         delta = (end - start).days
-    days = [start + datetime.timedelta(days=i) for i in range(delta + 1)]
-    label = f"{start.month:02d}{start.day:02d}-{em:02d}{ed:02d}"
+    days: list[datetime.date] = [start + datetime.timedelta(days=i) for i in range(delta + 1)]
+    label: str = f"{start.month:02d}{start.day:02d}-{em:02d}{ed:02d}"
     return label, days
 
 
@@ -201,15 +205,15 @@ def parse_log(path: str) -> pd.DataFrame:
     """Parse a sleep log text file and return a dataframe of daily records."""
 
     with open(path, 'r', encoding='utf-8') as f:
-        lines = f.readlines()
+        lines: list[str] = f.readlines()
 
     # ``records`` accumulates a dictionary per day which becomes our dataframe
-    records: List[Dict] = []
+    records: list[dict] = []
 
     # tracking variables for the current week block
-    week_label = None
-    week_days: List[datetime.date] = []
-    week_data: Dict[str, List] = {}
+    week_label: str | None = None
+    week_days: list[datetime.date] = []
+    week_data: dict[str, list] = {}
 
     # iterate over every line in the log
     for raw_line in lines:
@@ -227,7 +231,7 @@ def parse_log(path: str) -> pd.DataFrame:
             if week_label and week_days:
                 # flush the previous week's accumulated data
                 for i, day in enumerate(week_days):
-                    record = {'date': day, 'week_label': week_label}
+                    record: dict[str, object] = {'date': day, 'week_label': week_label}
                     for q, values in week_data.items():
                         if i < len(values):
                             record[q] = values[i]
@@ -245,9 +249,9 @@ def parse_log(path: str) -> pd.DataFrame:
                 # question line containing data for the current week
                 q_part, values_part = stripped.split('?', 1)
                 question = (q_part + '?').strip()
-                values = values_part.strip().split()
+                values: list[str] = values_part.strip().split()
                 col = QUESTION_TO_COLUMN.get(question)
-                parsed_vals = []
+                parsed_vals: list = []
 
                 # parse each value for the question column
                 for v in values:
@@ -273,7 +277,7 @@ def parse_log(path: str) -> pd.DataFrame:
     if week_label and week_days:
         # flush the final week after processing all lines
         for i, day in enumerate(week_days):
-            record = {'date': day, 'week_label': week_label}
+            record: dict[str, object] = {'date': day, 'week_label': week_label}
             for q, values in week_data.items():
                 if i < len(values):
                     record[q] = values[i]
@@ -283,8 +287,8 @@ def parse_log(path: str) -> pd.DataFrame:
 
     # Detect duplicate dates which would indicate a parsing bug in the log
     if len(df):
-        seen = set()
-        dup_set = set()
+        seen: set[datetime.date] = set()
+        dup_set: set[datetime.date] = set()
         for d in df['date']:
             if d in seen:
                 dup_set.add(d)
@@ -301,24 +305,24 @@ def parse_log(path: str) -> pd.DataFrame:
 def compute_weekly_stats(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """Return per-week statistics grouped by ``week_label``."""
 
-    weekly_dfs = {}
+    weekly_dfs: dict[str, pd.DataFrame] = {}
     if df.empty or 'week_label' not in df.columns:
         return weekly_dfs
 
     # iterate over each week block in the dataframe
     for label, wk_df in df.groupby('week_label'):
-        stats: Dict[str, List] = {}
+        stats: dict[str, list] = {}
         # total number of alcoholic drinks for the week
         stats['total_drinks'] = [wk_df.get('alcohol_drinks', pd.Series(dtype=float)).fillna(0).sum()]
 
         # process all time-based metrics
         for col in ['wind_down_start_time', 'bed_time', 'wake_up_time', 'get_out_of_bed_time']:
-            times = wk_df[col].dropna().tolist() if col in wk_df else []
+            times: list[datetime.time] = wk_df[col].dropna().tolist() if col in wk_df else []
             if not times:
                 continue
 
-            avg_t = _avg_time(times)
-            med_t = _median_time(times)
+            avg_t: datetime.time | None = _avg_time(times)
+            med_t: datetime.time | None = _median_time(times)
             std_t = _std_time(times)
 
             if avg_t:
@@ -328,8 +332,14 @@ def compute_weekly_stats(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
             if std_t is not None:
                 stats[f'{col}_std'] = [std_t]
 
-            offsets = [abs((t.hour * 60 + t.minute) - (EXPECTED_TIMES[col].hour * 60 + EXPECTED_TIMES[col].minute)) for t in times]
-            avg_off = sum(offsets) / len(offsets)
+            offsets: list[int] = [
+                abs(
+                    (t.hour * 60 + t.minute)
+                    - (EXPECTED_TIMES[col].hour * 60 + EXPECTED_TIMES[col].minute)
+                )
+                for t in times
+            ]
+            avg_off: float = sum(offsets) / len(offsets)
             med_off = _median(offsets)
             std_off = _std(offsets)
 
@@ -351,24 +361,24 @@ def compute_overall_stats(weekly_stats: Dict[str, pd.DataFrame]) -> pd.DataFrame
     if not weekly_stats:
         return pd.DataFrame()
 
-    combined = pd.concat(weekly_stats.values(), ignore_index=True)
+    combined: pd.DataFrame = pd.concat(weekly_stats.values(), ignore_index=True)
     numeric_cols = combined.select_dtypes(include='number').columns
-    time_cols = []
+    time_cols: list[str] = []
 
     if not combined.empty:
         for c in combined.columns:
             if c.endswith('_avg') and combined[c].dtype == object:
-                first = next((v for v in combined[c] if v is not None), None)
+                first: object | None = next((v for v in combined[c] if v is not None), None)
                 if isinstance(first, str) and ':' in first:
                     time_cols.append(c)
 
-    overall = {}
+    overall: dict[str, float | str] = {}
 
     # numeric columns
     for col in numeric_cols:
         base = col[:-4] if col.endswith('_avg') else col
-        values = [v for v in combined[col] if v is not None]
-        mean_val = sum(values) / len(values) if values else 0
+        values: list[float] = [v for v in combined[col] if v is not None]
+        mean_val: float = sum(values) / len(values) if values else 0
         median_val = _median(values) if values else 0
         overall[f'{col}'] = mean_val  # preserve original avg column
         if median_val is not None:
@@ -377,10 +387,12 @@ def compute_overall_stats(weekly_stats: Dict[str, pd.DataFrame]) -> pd.DataFrame
     # time columns
     for col in time_cols:
         base = col[:-4]
-        times = [pd.to_datetime(t).time() for t in combined[col] if isinstance(t, str)]
+        times: list[datetime.time] = [
+            pd.to_datetime(t).time() for t in combined[col] if isinstance(t, str)
+        ]
         if times:
-            avg_t = _avg_time(times)
-            med_t = _median_time(times)
+            avg_t: datetime.time | None = _avg_time(times)
+            med_t: datetime.time | None = _median_time(times)
             if avg_t:
                 overall[col] = avg_t.strftime('%I:%M%p').lower()
             if med_t:
