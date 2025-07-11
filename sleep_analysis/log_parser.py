@@ -90,21 +90,69 @@ def _parse_duration(value: str) -> float | None:
     except ValueError:
         return None
 
-
 def _avg_time(times: List[datetime.time]) -> datetime.time | None:
-    """Return the average time of day from ``times``."""
+    """
+    Return the circular (clock‐aware) mean of a list of datetime.time objects.
 
-    # filter out ``None`` entries
+    This handles the “wrap‐around” at midnight correctly by treating times
+    as points on the unit circle:
+
+    1. Filter out any None entries.
+    2. Convert each time to total minutes since midnight.
+    3. Map minutes → angle on the circle (0 to 2π).
+    4. Compute the average vector by summing sine and cosine components.
+       - sin_sum = ∑ sin(angle_i)
+       - cos_sum = ∑ cos(angle_i)
+    5. If both sums are zero, the mean is undefined (e.g., evenly opposite times).
+    6. Compute the mean angle = atan2(sin_sum / n, cos_sum / n).
+       - atan2 handles correct quadrant.
+    7. Normalize negative angles by adding 2π.
+    8. Convert mean angle back to minutes, then to hour and minute.
+    9. Round minutes; carry over if rounding hits 60.
+
+    Returns:
+        A datetime.time representing the circular average, or None if
+        the list is empty or the mean is undefined.
+    """
+
+    # 1. Remove None values
     times = [t for t in times if t is not None]
     if not times:
         return None
 
-    total_minutes = sum(t.hour * 60 + t.minute for t in times)
-    avg_minutes = total_minutes / len(times)
-    hour = int(avg_minutes // 60) % 24
-    minute = int(avg_minutes % 60)
-    return datetime.time(hour, minute)
+    # 2 & 3. Build list of angles (radians) for each time
+    angles = []
+    for t in times:
+        total_minutes = t.hour * 60 + t.minute
+        # Scale minutes to fraction of full day (24*60), then to radians
+        angle = (total_minutes / (24 * 60)) * 2 * math.pi
+        angles.append(angle)
 
+    # 4. Sum up sine and cosine components
+    sin_sum = sum(math.sin(a) for a in angles)
+    cos_sum = sum(math.cos(a) for a in angles)
+
+    # 5. If the resultant vector is zero, mean is undefined
+    if sin_sum == 0 and cos_sum == 0:
+        return None
+
+    # 6. Compute mean angle (divide by count for true average vector)
+    mean_angle = math.atan2(sin_sum / len(angles), cos_sum / len(angles))
+    # 7. Normalize to [0, 2π)
+    if mean_angle < 0:
+        mean_angle += 2 * math.pi
+
+    # 8. Convert back to total minutes, then hours and minutes
+    mean_total_minutes = (mean_angle * (24 * 60)) / (2 * math.pi)
+    hour = int(mean_total_minutes // 60) % 24
+    minute = int(round(mean_total_minutes % 60))
+
+    # 9. Handle rounding up to next hour
+    if minute == 60:
+        hour = (hour + 1) % 24
+        minute = 0
+
+    return datetime.time(hour, minute)
 
 def _median(values: List[float]) -> float | None:
     """Return the median of ``values`` ignoring ``None`` entries."""
@@ -151,14 +199,21 @@ def _std_time(times: List[datetime.time]) -> float | None:
 
 
 def _avg_offset(times: List[datetime.time], expected: datetime.time) -> float | None:
-    """Return average absolute difference from ``expected``."""
+    """Average absolute offset from ``expected`` in minutes using circular distance."""
 
     times = [t for t in times if t is not None]
     if not times:
         return None
 
     exp_minutes = expected.hour * 60 + expected.minute
-    diffs = [abs((t.hour * 60 + t.minute) - exp_minutes) for t in times]
+
+    def _circ_diff(m: int) -> int:
+        diff = abs(m - exp_minutes) % (24 * 60)
+        if diff > 12 * 60:
+            diff = 24 * 60 - diff
+        return diff
+
+    diffs = [_circ_diff(t.hour * 60 + t.minute) for t in times]
     return sum(diffs) / len(diffs)
 
 

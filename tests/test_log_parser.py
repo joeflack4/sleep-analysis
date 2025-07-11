@@ -161,6 +161,8 @@ from sleep_analysis.log_parser import (
     parse_log,
     compute_weekly_stats,
     compute_overall_stats,
+    _avg_time,
+    _avg_offset,
     _parse_duration,
     _parse_week_header,
 ) 
@@ -244,6 +246,46 @@ def test_parse_log_duplicate_dates(tmp_path):
     )
     with pytest.raises(ValueError):
         parse_log(str(log))
+
+def test_avg_time_across_midnight():
+    times = [
+        datetime.time(6, 50),
+        datetime.time(6, 23),
+        datetime.time(5, 5),
+        datetime.time(4, 46),
+        datetime.time(6, 30),
+        datetime.time(21, 42),
+    ]
+    avg = _avg_time(times)
+    assert avg.strftime('%H:%M') == '05:11'
+
+
+def test_compute_weekly_stats_cross_midnight():
+    times = [
+        datetime.time(6, 50),
+        datetime.time(6, 23),
+        datetime.time(5, 5),
+        datetime.time(4, 46),
+        datetime.time(6, 30),
+        datetime.time(21, 42),
+    ]
+    df = pd.DataFrame([
+        {
+            'date': datetime.date(2025, 4, 25 + i),
+            'week_label': '0425-0430',
+            'bed_time': t,
+        }
+        for i, t in enumerate(times)
+    ])
+    weekly = compute_weekly_stats(df)
+    avg_str = weekly['0425-0430']['bed_time_avg'].iloc[0]
+    assert avg_str == '05:11am'
+
+
+def test_avg_offset_circular():
+    times = [datetime.time(23, 0), datetime.time(1, 0)]
+    offset = _avg_offset(times, datetime.time(0, 0))
+    assert offset == 60
 
 
 def test_single_week_range_label():
