@@ -461,6 +461,90 @@ def export_single_weeks_csv(logfile: str, output_dir: str) -> None:
         _write_week_csv(output_dir, week_days, week_data)
 
 
+def save_week_log_annotations_as_markdown(log_text: str) -> None:
+    """
+    Extracts indented annotations under each question in a weekly sleep log snippet and
+    saves them as a markdown file.
+
+    The log_text must start with a week header matching _WEEK_HEADER_RE (e.g. 'Thu6/19-Wed25' or '6/19-7/02').
+    Questions are lines beginning with a question number (e.g. '1.3b. Wind-down activities...').
+    Any lines indented deeper than the question line are treated as annotations. If an annotation line
+    starts with 'Day', the 'Day X, Date' portion is italicized in markdown.
+
+    https://chatgpt.com/c/68709a0e-5684-800c-b59e-3709d6e58e56
+
+    The output markdown file is written to:
+      output/single-weeks-by-log-range/annotations-YYYY--MM-DD--MM2-DD2.md
+    where YYYY is the current year, MM-DD is taken from the header's date range,
+    and if the second date omits the month, it inherits the first month's value.
+    """
+    lines = log_text.splitlines()
+    if not lines:
+        raise ValueError("Empty log text provided")
+
+    header = lines[0].strip()
+    if not _WEEK_HEADER_RE.match(header):
+        raise ValueError(f"Header '{header}' does not match expected week header pattern")
+
+    # Parse the month/day pairs from the header
+    m = re.search(r"(\d{1,2})/(\d{1,2})-(?:[A-Za-z]{3})?(?:(\d{1,2})/)?(\d{1,2})", header)
+    if not m:
+        raise ValueError(f"Could not parse dates from header '{header}'")
+    month1, day1, month2, day2 = m.group(1), m.group(2), m.group(3), m.group(4)
+    month2 = month2 if month2 else month1
+
+    # Build output filename
+    year = datetime.date.today().year
+    mm1, dd1 = month1.zfill(2), day1.zfill(2)
+    mm2, dd2 = month2.zfill(2), day2.zfill(2)
+    out_dir = 'output/single-weeks-by-log-range'
+    os.makedirs(out_dir, exist_ok=True)
+    filename = f"annotations-{year}--{mm1}-{dd1}--{mm2}-{dd2}.md"
+    filepath = os.path.join(out_dir, filename)
+
+    # Extract annotations
+    annotations = {}
+    current_question = None
+    question_indent = None
+    question_re = re.compile(r'^\s*\d+(?:\.\d+)*[a-z]?\.\s')
+
+    for line in lines[1:]:
+        if not line.strip():
+            continue
+        indent = len(line) - len(line.lstrip(' '))
+        # Detection of a question line
+        if question_re.match(line):
+            current_question = line.strip()
+            question_indent = indent
+            annotations[current_question] = []
+        # Collect annotation lines indented under the current question
+        elif current_question is not None and indent > question_indent:
+            text = line.strip()
+            if not text:
+                continue
+            # Italicize 'Day X, Date' if present
+            if text.startswith('Day') and ':' in text:
+                prefix, rest = text.split(':', 1)
+                text = f"_{prefix}_:{rest}"
+            annotations[current_question].append(text)
+
+    # Generate markdown content
+    md_lines = []
+    for question, notes in annotations.items():
+        if not notes:
+            continue
+        md_lines.append(f"**{question}**")
+        for note in notes:
+            md_lines.append(note)
+        md_lines.append("")  # blank line between sections
+    md_content = "\n".join(md_lines).strip() + "\n"
+
+    # Write out the markdown file
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(md_content)
+
+
+
 def _write_week_csv(output_dir: str, days: List[datetime.date], data: Dict[str, List[str]]) -> None:
     os.makedirs(output_dir, exist_ok=True)
     start = days[0]
