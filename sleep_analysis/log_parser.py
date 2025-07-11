@@ -417,7 +417,8 @@ def _format_raw_value(value: str) -> str:
     if '|' not in value and value.lower().endswith(('am', 'pm')):
         t = _parse_time(value)
         if t is not None:
-            return datetime.datetime.combine(datetime.date(1900, 1, 1), t).strftime('%-I:%M %p')
+            formatted = datetime.datetime.combine(datetime.date(1900, 1, 1), t).strftime('%I:%M %p')
+            return formatted.lstrip('0')  # Remove leading zero from hour
     return value
 
 
