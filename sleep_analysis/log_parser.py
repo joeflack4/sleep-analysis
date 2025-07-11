@@ -3,7 +3,7 @@ import math
 import re
 import os
 import csv
-from typing import Dict, List
+from typing import Dict, List, Iterable
 
 import pandas as pd
 
@@ -452,13 +452,34 @@ def compute_weekly_stats(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     return weekly_dfs
 
 
+def _filter_non_empty_frames(frames: Iterable[pd.DataFrame]) -> list[pd.DataFrame]:
+    """Return frames that are not completely empty or all ``NaN``."""
+
+    valid: list[pd.DataFrame] = []
+    for df in frames:
+        try:
+            empty_df = df.dropna(how="all").empty
+        except Exception:
+            empty_df = df.empty or all(
+                all(val is None for val in df[col]) for col in df.columns
+            )
+        if not empty_df:
+            valid.append(df)
+    return valid
+
+
 def compute_overall_stats(weekly_stats: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     """Aggregate ``weekly_stats`` into a single overall statistics dataframe."""
 
     if not weekly_stats:
         return pd.DataFrame()
 
-    combined: pd.DataFrame = pd.concat(weekly_stats.values(), ignore_index=True)
+    valid_stats = _filter_non_empty_frames(weekly_stats.values())
+
+    if not valid_stats:
+        return pd.DataFrame()
+
+    combined: pd.DataFrame = pd.concat(valid_stats, ignore_index=True)
     numeric_cols = combined.select_dtypes(include='number').columns
     time_cols: list[str] = []
 
