@@ -512,6 +512,9 @@ def save_week_log_annotations_as_markdown(
     filename = f"annotations-{year}--{mm1}-{dd1}--{mm2}-{dd2}.md"
     filepath = os.path.join(output_dir, filename)
 
+    # Build header line for the markdown file
+    header_line = f"## Annotations: {mm1}/{dd1} - {mm2}/{dd2}  "
+
     # Extract annotations
     annotations = {}
     current_question = None
@@ -539,15 +542,17 @@ def save_week_log_annotations_as_markdown(
             annotations[current_question].append(text)
 
     # Generate markdown content
-    md_lines = []
+    md_lines = [header_line]
     for question, notes in annotations.items():
         if not notes:
             continue
-        md_lines.append(f"**{question}**")
+        md_lines.append(f"**{question}**  ")
         for note in notes:
-            md_lines.append(note)
+            md_lines.append(f"{note}  ")
         md_lines.append("")  # blank line between sections
-    md_content = "\n".join(md_lines).strip() + "\n"
+    md_content = "\n".join(md_lines)
+    if not md_content.endswith("\n"):
+        md_content += "\n"
 
     # Write out the markdown file
     with open(filepath, 'w', encoding='utf-8') as f:
