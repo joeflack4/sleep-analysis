@@ -13,6 +13,7 @@ from sleep_analysis.log_parser import (
     export_weeks_from_dataframe,
     export_questions_table,
     _prepare_stats_for_output,
+    _filter_non_empty_frames,
 )
 
 
@@ -86,15 +87,7 @@ def run_analysis(logfile: str, output_dir: str, label_files: bool = False) -> No
             log_rows.append(out_df)
 
         if log_rows:
-            # Filter out completely empty dataframes to avoid concat warnings
-            valid_rows: list[pd.DataFrame] = []
-            for r in log_rows:
-                try:
-                    empty_df = r.dropna(how='all').empty
-                except Exception:
-                    empty_df = r.empty or all(all(val is None for val in r[col]) for col in r.columns)
-                if not empty_df:
-                    valid_rows.append(r)
+            valid_rows = _filter_non_empty_frames(log_rows)
 
             if valid_rows:
                 by_log_df: pd.DataFrame = pd.concat(valid_rows, ignore_index=True)
