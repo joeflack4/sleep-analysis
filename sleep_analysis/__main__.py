@@ -10,6 +10,8 @@ from sleep_analysis.log_parser import (
     export_single_weeks_csv,
     compute_weekly_stats,
     compute_overall_stats,
+    export_weeks_from_dataframe,
+    export_questions_table,
 )
 
 
@@ -53,10 +55,17 @@ def run_analysis(logfile: str, output_dir: str, label_files: bool = False) -> No
         data_name = f'data-{range_label}.tsv'
         stats_name = f'stats-{range_label}.tsv'
 
-    df.drop(columns=['week_label']).to_csv(os.path.join(output_dir, data_name), sep='\t', index=False)
+    df_out = df.drop(columns=['week_label'])
+    df_out.to_csv(os.path.join(output_dir, data_name), sep='\t', index=False)
+    questions_name = 'data-with-questions.tsv'
+    if label_files:
+        questions_name = f'data-with-questions-{range_label}.tsv'
+    export_questions_table(df_out, os.path.join(output_dir, questions_name))
 
     weekly_stats: dict[str, pd.DataFrame] = compute_weekly_stats(df)
     export_single_weeks_csv(logfile, os.path.join(output_dir, "single-weeks-by-log-range"))
+    export_weeks_from_dataframe(df, 'week_by_log_dates', os.path.join(output_dir, 'single-weeks-by-log-range'))
+    export_weeks_from_dataframe(df, 'week', os.path.join(output_dir, 'by-week'))
 
     if not label_files:
         # create additional stats using date ranges found in the log itself

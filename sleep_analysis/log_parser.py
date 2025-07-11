@@ -15,6 +15,9 @@ QUESTION_TO_COLUMN = {
     '14. If alcohol, how many standard drinks?': 'alcohol_drinks',
 }
 
+# Reverse lookup used when exporting per-week CSVs from a dataframe
+COLUMN_TO_QUESTION = {v: k for k, v in QUESTION_TO_COLUMN.items()}
+
 EXPECTED_TIMES = {
     'wind_down_start_time': datetime.time(2, 50),
     'bed_time': datetime.time(4, 0),
@@ -622,7 +625,7 @@ def _write_week_csv(
     start = days[0]
     end = days[-1]
     label = _format_range(start, end)
-    path = os.path.join(output_dir, f'data-{label}.csv')
+    path = os.path.join(output_dir, f'data-with-questions-{label}.csv')
     header = [''] + [f'{d.month}/{d.day}' for d in days]
     with open(path, 'w', encoding='utf-8', newline='') as f:
         writer = csv.writer(f, lineterminator='\n')
@@ -636,4 +639,85 @@ def _write_week_csv(
 
     # Save annotations for this week
     save_week_log_annotations_as_markdown(week_text, output_dir)
+
+
+def _write_week_csv_from_df(
+    df: pd.DataFrame, output_dir: str, label: str, *, delimiter: str = ",", ext: str = "csv"
+) -> None:
+    """Write a table similar to ``_write_week_csv`` using dataframe values."""
+
+    os.makedirs(output_dir, exist_ok=True)
+    rows = [
+        {col: df[col][i] if i < len(df[col]) else None for col in df.columns}
+        for i in range(len(df['date']))
+    ]
+    rows.sort(key=lambda r: r['date'])
+    days = [r['date'] for r in rows]
+    header = [''] + [f'{d.month}/{d.day}' for d in days]
+    path = os.path.join(output_dir, f'data-with-questions-{label}.{ext}')
+    with open(path, 'w', encoding='utf-8', newline='') as f:
+        writer = csv.writer(f, lineterminator='\n', delimiter=delimiter)
+        writer.writerow(header)
+        for col in ['wind_down_start_time', 'bed_time', 'wake_up_time', 'get_out_of_bed_time', 'alcohol_drinks']:
+            if col not in df.columns:
+                continue
+            question = COLUMN_TO_QUESTION.get(col, col)
+            row = [question]
+            for r in rows:
+                val = r.get(col)
+                if isinstance(val, datetime.time):
+                    text = datetime.datetime.combine(datetime.date(1900, 1, 1), val).strftime('%I:%M %p').lstrip('0')
+                elif val is None:
+                    text = ''
+                else:
+                    text = str(val)
+                row.append(text)
+            writer.writerow(row)
+
+
+def export_weeks_from_dataframe(df: pd.DataFrame, label_col: str, output_dir: str) -> None:
+    """Export per-week CSVs, TSVs and stats using ``label_col`` for grouping."""
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    df_stats = df.copy()
+    df_stats['week_label'] = df[label_col]
+    weekly_stats = compute_weekly_stats(df_stats)
+
+    for label, wk_df in weekly_stats.items():
+        wk_df.to_csv(os.path.join(output_dir, f'stats-{label}.tsv'), sep='\t', index=False)
+
+    for label, group in df.groupby(label_col):
+        group.to_csv(os.path.join(output_dir, f'data-{label}.tsv'), sep='\t', index=False)
+        _write_week_csv_from_df(group, output_dir, label)
+
+
+def export_questions_table(df: pd.DataFrame, path: str) -> None:
+    """Write ``df`` to ``path`` in the same question-oriented layout."""
+
+    rows = [
+        {col: df[col][i] if i < len(df[col]) else None for col in df.columns}
+        for i in range(len(df['date']))
+    ]
+    rows.sort(key=lambda r: r['date'])
+    days = [r['date'] for r in rows]
+    header = [''] + [f"{d.month}/{d.day}" for d in days]
+    with open(path, 'w', encoding='utf-8', newline='') as f:
+        writer = csv.writer(f, lineterminator='\n', delimiter='\t')
+        writer.writerow(header)
+        for col in ['wind_down_start_time', 'bed_time', 'wake_up_time', 'get_out_of_bed_time', 'alcohol_drinks']:
+            if col not in df.columns:
+                continue
+            question = COLUMN_TO_QUESTION.get(col, col)
+            row = [question]
+            for r in rows:
+                val = r.get(col)
+                if isinstance(val, datetime.time):
+                    text = datetime.datetime.combine(datetime.date(1900, 1, 1), val).strftime('%I:%M %p').lstrip('0')
+                elif val is None:
+                    text = ''
+                else:
+                    text = str(val)
+                row.append(text)
+            writer.writerow(row)
 
