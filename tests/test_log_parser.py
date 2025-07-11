@@ -269,3 +269,10 @@ def test_parse_log_handles_blank_lines_and_notes(tmp_path):
     )
     df = parse_log(str(log))
     assert len(df) == 3
+
+
+def test_parse_log_week_header_without_indent():
+    df = parse_log('tests/input/long-single-week.txt')
+    assert len(df) == 3
+    assert set(df['week_label']) == {'0619-0621'}
+    assert df['wind_down_start_time'][0] is not None
