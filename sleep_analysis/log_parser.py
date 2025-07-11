@@ -647,10 +647,7 @@ def _write_week_csv_from_df(
     """Write a table similar to ``_write_week_csv`` using dataframe values."""
 
     os.makedirs(output_dir, exist_ok=True)
-    rows = [
-        {col: df[col][i] if i < len(df[col]) else None for col in df.columns}
-        for i in range(len(df['date']))
-    ]
+    rows = df.to_dict(orient='records')
     rows.sort(key=lambda r: r['date'])
     days = [r['date'] for r in rows]
     header = [''] + [f'{d.month}/{d.day}' for d in days]
