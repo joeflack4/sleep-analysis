@@ -1,5 +1,7 @@
 # sleep-analysis
 
+[![CI](https://github.com/joeflack4/sleep-analysis/actions/workflows/tests.yml/badge.svg)](https://github.com/joeflack4/sleep-analysis/actions/workflows/tests.yml)
+
 Tools for parsing semi-structured sleep logs and producing weekly and overall statistics.
 
 ## Installation
