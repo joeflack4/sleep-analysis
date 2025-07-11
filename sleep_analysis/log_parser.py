@@ -682,10 +682,10 @@ def export_weeks_from_dataframe(df: pd.DataFrame, label_col: str, output_dir: st
     weekly_stats = compute_weekly_stats(df_stats)
 
     for label, wk_df in weekly_stats.items():
-        wk_df.to_csv(os.path.join(output_dir, f'stats-{label}.tsv'), sep='\t', index=False)
+        wk_df.to_csv(os.path.join(output_dir, f'stats-{label}.tsv'), sep='\t', index=False, lineterminator="\n")
 
     for label, group in df.groupby(label_col):
-        group.to_csv(os.path.join(output_dir, f'data-{label}.tsv'), sep='\t', index=False)
+        group.to_csv(os.path.join(output_dir, f'data-{label}.tsv'), sep='\t', index=False, lineterminator="\n")
         _write_week_csv_from_df(group, output_dir, label)
 
 

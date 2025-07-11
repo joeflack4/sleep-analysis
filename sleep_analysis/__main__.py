@@ -56,7 +56,7 @@ def run_analysis(logfile: str, output_dir: str, label_files: bool = False) -> No
         stats_name = f'stats-{range_label}.tsv'
 
     df_out = df.drop(columns=['week_label'])
-    df_out.to_csv(os.path.join(output_dir, data_name), sep='\t', index=False)
+    df_out.to_csv(os.path.join(output_dir, data_name), sep='\t', index=False, lineterminator="\n")
     questions_name = 'data-with-questions.tsv'
     if label_files:
         questions_name = f'data-with-questions-{range_label}.tsv'
@@ -84,11 +84,11 @@ def run_analysis(logfile: str, output_dir: str, label_files: bool = False) -> No
                 os.path.join(output_dir, 'stats-by-log-date-ranges.tsv'),
                 sep='\t',
                 index=False,
-            )
+                lineterminator="\n")
 
     # final summary across all weeks
     overall = compute_overall_stats(weekly_stats)
-    overall.to_csv(os.path.join(output_dir, stats_name), sep='\t', index=False)
+    overall.to_csv(os.path.join(output_dir, stats_name), sep='\t', index=False, lineterminator="\n")
 
 
 def main():
