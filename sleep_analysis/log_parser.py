@@ -22,6 +22,15 @@ EXPECTED_TIMES = {
 
 _TIME_RE = re.compile(r'^(\d{1,2})(?::(\d{2}))?(am|pm)?$', re.IGNORECASE)
 
+# Matches week header lines such as ``"Fri4/25-Wed4/30"`` or ``"Thu6/19-Wed25"``
+# where the day-of-week prefix is optional for both the start and end dates. The
+# month/day pairs may also omit the month on the end date in which case the
+# start month is assumed.
+_WEEK_HEADER_RE = re.compile(
+    r'^(?:[A-Za-z]{3})?\d{1,2}/\d{1,2}-'
+    r'(?:[A-Za-z]{3})?(?:\d{1,2}/)?\d{1,2}$'
+)
+
 
 def _parse_time(value: str) -> datetime.time | None:
     if value in {'.', '', None}:
@@ -178,7 +187,8 @@ def parse_log(path: str) -> pd.DataFrame:
         expanded = line.replace('\t', '    ')
         indent = len(expanded) - len(expanded.lstrip(' '))
         stripped = line.strip()
-        if indent == 4:  # week header
+
+        if _WEEK_HEADER_RE.match(stripped):
             if week_label and week_days:
                 # flush previous week
                 for i, day in enumerate(week_days):
@@ -194,7 +204,7 @@ def parse_log(path: str) -> pd.DataFrame:
             else:
                 week_label = None
                 week_days = []
-        elif indent == 8 and week_label:
+        elif indent >= 4 and week_label:
             if '?' in stripped:
                 q_part, values_part = stripped.split('?', 1)
                 question = (q_part + '?').strip()
