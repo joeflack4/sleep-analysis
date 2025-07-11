@@ -82,6 +82,40 @@ def _avg_time(times: List[datetime.time]) -> datetime.time | None:
     return datetime.time(hour, minute)
 
 
+def _median(values: List[float]) -> float | None:
+    values = sorted(v for v in values if v is not None)
+    if not values:
+        return None
+    mid = len(values) // 2
+    if len(values) % 2:
+        return values[mid]
+    return (values[mid - 1] + values[mid]) / 2
+
+
+def _median_time(times: List[datetime.time]) -> datetime.time | None:
+    minutes = [t.hour * 60 + t.minute for t in times if t is not None]
+    med = _median(minutes)
+    if med is None:
+        return None
+    hour = int(med // 60) % 24
+    minute = int(med % 60)
+    return datetime.time(hour, minute)
+
+
+def _std(values: List[float]) -> float | None:
+    values = [v for v in values if v is not None]
+    if not values:
+        return None
+    mean_val = sum(values) / len(values)
+    var = sum((v - mean_val) ** 2 for v in values) / len(values)
+    return math.sqrt(var)
+
+
+def _std_time(times: List[datetime.time]) -> float | None:
+    minutes = [t.hour * 60 + t.minute for t in times if t is not None]
+    return _std(minutes)
+
+
 def _avg_offset(times: List[datetime.time], expected: datetime.time) -> float | None:
     times = [t for t in times if t is not None]
     if not times:
@@ -222,11 +256,26 @@ def compute_weekly_stats(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         stats['total_drinks'] = [wk_df.get('alcohol_drinks', pd.Series(dtype=float)).fillna(0).sum()]
         for col in ['wind_down_start_time', 'bed_time', 'wake_up_time', 'get_out_of_bed_time']:
             times = wk_df[col].dropna().tolist() if col in wk_df else []
+            if not times:
+                continue
             avg_t = _avg_time(times)
+            med_t = _median_time(times)
+            std_t = _std_time(times)
             if avg_t:
                 stats[f'{col}_avg'] = [avg_t.strftime('%I:%M%p').lower()]
-                off = _avg_offset(times, EXPECTED_TIMES[col])
-                stats[f'{col}_offset_avg'] = [off]
+            if med_t:
+                stats[f'{col}_median'] = [med_t.strftime('%I:%M%p').lower()]
+            if std_t is not None:
+                stats[f'{col}_std'] = [std_t]
+            offsets = [abs((t.hour * 60 + t.minute) - (EXPECTED_TIMES[col].hour * 60 + EXPECTED_TIMES[col].minute)) for t in times]
+            avg_off = sum(offsets) / len(offsets)
+            med_off = _median(offsets)
+            std_off = _std(offsets)
+            stats[f'{col}_offset_avg'] = [avg_off]
+            if med_off is not None:
+                stats[f'{col}_offset_median'] = [med_off]
+            if std_off is not None:
+                stats[f'{col}_offset_std'] = [std_off]
         week_stats_df = pd.DataFrame(stats)
         weekly_dfs[label] = week_stats_df
     return weekly_dfs
@@ -250,24 +299,20 @@ def compute_overall_stats(weekly_stats: Dict[str, pd.DataFrame]) -> pd.DataFrame
         base = col[:-4] if col.endswith('_avg') else col
         values = [v for v in combined[col] if v is not None]
         mean_val = sum(values) / len(values) if values else 0
-        var = sum((v - mean_val) ** 2 for v in values) / len(values) if values else 0
-        std_val = math.sqrt(var) if values else 0
+        median_val = _median(values) if values else 0
         overall[f'{col}'] = mean_val  # preserve original avg column
-        overall[f'{base}_mean'] = mean_val
-        overall[f'{base}_std'] = std_val
+        if median_val is not None:
+            overall[f'{base}_median'] = median_val
     # time columns
     for col in time_cols:
         base = col[:-4]
         times = [pd.to_datetime(t).time() for t in combined[col] if isinstance(t, str)]
         if times:
-            minutes = [t.hour * 60 + t.minute for t in times]
-            mean_minutes = sum(minutes) / len(minutes)
-            var = sum((m - mean_minutes) ** 2 for m in minutes) / len(minutes)
-            std_minutes = math.sqrt(var)
             avg_t = _avg_time(times)
+            med_t = _median_time(times)
             if avg_t:
                 overall[col] = avg_t.strftime('%I:%M%p').lower()
-                overall[f'{base}_mean'] = avg_t.strftime('%I:%M%p').lower()
-            overall[f'{base}_std'] = std_minutes
+            if med_t:
+                overall[f'{base}_median'] = med_t.strftime('%I:%M%p').lower()
     return pd.DataFrame([overall])
 

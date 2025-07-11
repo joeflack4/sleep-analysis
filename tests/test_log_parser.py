@@ -194,7 +194,8 @@ def test_compute_overall_stats(sample_log_path):
     weekly = compute_weekly_stats(df)
     overall = compute_overall_stats(weekly)
     assert len(overall) == 1
-    assert overall['total_drinks_mean'].iloc[0] == pytest.approx((3 + 7) / 2)
+    assert 'total_drinks_mean' not in overall.columns
+    assert overall['total_drinks_median'].iloc[0] == pytest.approx(5)
 
 
 def test_compute_weekly_stats_handles_missing_week_label():
