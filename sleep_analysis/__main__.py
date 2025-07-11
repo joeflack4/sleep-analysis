@@ -42,12 +42,12 @@ def run_analysis(logfile: str, output_dir: str, label_files: bool = False) -> No
     )
     df['week'] = df['date'].apply(lambda d: _format_range(*_week_range_for_date(d)))
 
-    start = df['date'].min()
-    end = df['date'].max()
+    start: datetime.date = df['date'].min()
+    end: datetime.date = df['date'].max()
     range_label = _format_range(start, end)
 
-    data_name = 'data.tsv'
-    stats_name = 'stats.tsv'
+    data_name: str = 'data.tsv'
+    stats_name: str = 'stats.tsv'
     if label_files:
         # optionally include the date range in the filenames
         data_name = f'data-{range_label}.tsv'
@@ -55,12 +55,12 @@ def run_analysis(logfile: str, output_dir: str, label_files: bool = False) -> No
 
     df.drop(columns=['week_label']).to_csv(os.path.join(output_dir, data_name), sep='\t', index=False)
 
-    weekly_stats = compute_weekly_stats(df)
+    weekly_stats: dict[str, pd.DataFrame] = compute_weekly_stats(df)
     export_single_weeks_csv(logfile, os.path.join(output_dir, "single-weeks-by-log-range"))
 
     if not label_files:
         # create additional stats using date ranges found in the log itself
-        log_rows = []
+        log_rows: list[pd.DataFrame] = []
         for label, wk_df in weekly_stats.items():
             start = df[df['week_label'] == label]['date'].min()
             end = df[df['week_label'] == label]['date'].max()
@@ -70,7 +70,7 @@ def run_analysis(logfile: str, output_dir: str, label_files: bool = False) -> No
             log_rows.append(out_df)
 
         if log_rows:
-            by_log_df = pd.concat(log_rows, ignore_index=True)
+            by_log_df: pd.DataFrame = pd.concat(log_rows, ignore_index=True)
             by_log_df.to_csv(
                 os.path.join(output_dir, 'stats-by-log-date-ranges.tsv'),
                 sep='\t',
