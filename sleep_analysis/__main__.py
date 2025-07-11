@@ -12,6 +12,7 @@ from sleep_analysis.log_parser import (
     compute_overall_stats,
     export_weeks_from_dataframe,
     export_questions_table,
+    _prepare_stats_for_output,
 )
 
 
@@ -66,6 +67,12 @@ def run_analysis(logfile: str, output_dir: str, label_files: bool = False) -> No
     export_single_weeks_csv(logfile, os.path.join(output_dir, "single-weeks-by-log-range"))
     export_weeks_from_dataframe(df, 'week_by_log_dates', os.path.join(output_dir, 'single-weeks-by-log-range'))
     export_weeks_from_dataframe(df, 'week', os.path.join(output_dir, 'by-week'))
+    src = os.path.join(output_dir, 'single-weeks-by-log-range', 'stats-by-week_by_log_dates.tsv')
+    if os.path.exists(src):
+        os.replace(src, os.path.join(output_dir, 'stats-by-log-date-ranges.tsv'))
+    src = os.path.join(output_dir, 'by-week', 'stats-by-week.tsv')
+    if os.path.exists(src):
+        os.replace(src, os.path.join(output_dir, 'stats-by-week.tsv'))
 
     if not label_files:
         # create additional stats using date ranges found in the log itself
@@ -80,7 +87,8 @@ def run_analysis(logfile: str, output_dir: str, label_files: bool = False) -> No
 
         if log_rows:
             by_log_df: pd.DataFrame = pd.concat(log_rows, ignore_index=True)
-            by_log_df.to_csv(
+            out_df = _prepare_stats_for_output(by_log_df, 'week_by_log_dates')
+            out_df.to_csv(
                 os.path.join(output_dir, 'stats-by-log-date-ranges.tsv'),
                 sep='\t',
                 index=False,
@@ -88,7 +96,8 @@ def run_analysis(logfile: str, output_dir: str, label_files: bool = False) -> No
 
     # final summary across all weeks
     overall = compute_overall_stats(weekly_stats)
-    overall.to_csv(os.path.join(output_dir, stats_name), sep='\t', index=False)
+    out_overall = _prepare_stats_for_output(overall)
+    out_overall.to_csv(os.path.join(output_dir, stats_name), sep='\t', index=False)
 
 
 def main():

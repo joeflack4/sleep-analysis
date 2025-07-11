@@ -10,13 +10,49 @@ import pandas as pd
 QUESTION_TO_COLUMN = {
     '1b. What time start winding down?': 'wind_down_start_time',
     '1.2b. What time did you get into bed & commit to sleep?': 'bed_time',
+    '2. How long do you estimate it took to fall asleep (minutes)?': 'fall_asleep_minutes',
+    '3. How many times did you wake up during the night?': 'night_wake_ups',
+    '4. In total, how long did these awakenings last (minutes)?': 'awake_minutes',
+    '5. When awake during the night, how long did you spend out of bed (minutes)?': 'out_of_bed_minutes',
     '6. What time did you wake up?': 'wake_up_time',
     '7. What time did you get out of bed?': 'get_out_of_bed_time',
+    '8. In TOTAL, how many hours of sleep did you get?': 'sleep_hours',
+    '9. In TOTAL, how many hours did you spend in bed?': 'bed_hours',
+    '10. Quality of your sleep (1-10)?': 'sleep_quality',
+    '11. Did you take naps during the day?': 'naps',
+    '12. Mood during the day (1-10)?': 'mood',
+    '13. Fatigue level during the day (1-10)?': 'fatigue',
     '14. If alcohol, how many standard drinks?': 'alcohol_drinks',
+    '15. - what type?': 'alcohol_type',
+    '16. - what time?': 'alcohol_time',
+    '17. Second wind?': 'second_wind',
 }
 
 # Reverse lookup used when exporting per-week CSVs from a dataframe
 COLUMN_TO_QUESTION = {v: k for k, v in QUESTION_TO_COLUMN.items()}
+
+TIME_COLS = [
+    'wind_down_start_time',
+    'bed_time',
+    'wake_up_time',
+    'get_out_of_bed_time',
+]
+
+NUMERIC_COLS = [
+    'fall_asleep_minutes',
+    'night_wake_ups',
+    'awake_minutes',
+    'out_of_bed_minutes',
+    'sleep_hours',
+    'bed_hours',
+    'sleep_quality',
+    'naps',
+    'mood',
+    'fatigue',
+    'alcohol_drinks',
+]
+
+STRING_COLS = ['alcohol_type', 'alcohol_time', 'second_wind']
 
 EXPECTED_TIMES = {
     'wind_down_start_time': datetime.time(2, 50),
@@ -315,12 +351,13 @@ def parse_log(path: str) -> pd.DataFrame:
 
                 # parse each value for the question column
                 for v in values:
-                    if col and 'time' in col:
+                    if col in TIME_COLS:
                         parsed_vals.append(_parse_time(v))
+                    elif col in STRING_COLS:
+                        parsed_vals.append(None if v == '.' else v)
                     elif col == 'alcohol_drinks':
                         parsed_vals.append(float(v) if v != '.' else 0.0)
                     else:
-                        # generic: try duration or numeric value
                         val = _parse_duration(v)
                         if val is None:
                             try:
@@ -372,42 +409,42 @@ def compute_weekly_stats(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     # iterate over each week block in the dataframe
     for label, wk_df in df.groupby('week_label'):
         stats: dict[str, list] = {}
+
         # total number of alcoholic drinks for the week
         stats['total_drinks'] = [wk_df.get('alcohol_drinks', pd.Series(dtype=float)).fillna(0).sum()]
 
-        # process all time-based metrics
-        for col in ['wind_down_start_time', 'bed_time', 'wake_up_time', 'get_out_of_bed_time']:
+        for col in TIME_COLS:
             times: list[datetime.time] = wk_df[col].dropna().tolist() if col in wk_df else []
-            if not times:
-                continue
+            avg_t: datetime.time | None = _avg_time(times) if times else None
+            med_t: datetime.time | None = _median_time(times) if times else None
+            std_t = _std_time(times) if times else None
 
-            avg_t: datetime.time | None = _avg_time(times)
-            med_t: datetime.time | None = _median_time(times)
-            std_t = _std_time(times)
+            stats[f'{col}_avg'] = [avg_t.strftime('%I:%M%p').lower() if avg_t else None]
+            stats[f'{col}_median'] = [med_t.strftime('%I:%M%p').lower() if med_t else None]
+            stats[f'{col}_std'] = [std_t]
 
-            if avg_t:
-                stats[f'{col}_avg'] = [avg_t.strftime('%I:%M%p').lower()]
-            if med_t:
-                stats[f'{col}_median'] = [med_t.strftime('%I:%M%p').lower()]
-            if std_t is not None:
-                stats[f'{col}_std'] = [std_t]
-
-            offsets: list[int] = [
-                abs(
-                    (t.hour * 60 + t.minute)
-                    - (EXPECTED_TIMES[col].hour * 60 + EXPECTED_TIMES[col].minute)
-                )
-                for t in times
-            ]
-            avg_off: float = sum(offsets) / len(offsets)
-            med_off = _median(offsets)
-            std_off = _std(offsets)
-
+            offsets: list[int] = []
+            if times:
+                for t in times:
+                    diff = abs((t.hour * 60 + t.minute) - (EXPECTED_TIMES[col].hour * 60 + EXPECTED_TIMES[col].minute)) % (24 * 60)
+                    if diff > 12 * 60:
+                        diff = 24 * 60 - diff
+                    offsets.append(diff)
+            avg_off: float | None = sum(offsets) / len(offsets) if offsets else None
+            med_off = _median(offsets) if offsets else None
+            std_off = _std(offsets) if offsets else None
             stats[f'{col}_offset_avg'] = [avg_off]
-            if med_off is not None:
-                stats[f'{col}_offset_median'] = [med_off]
-            if std_off is not None:
-                stats[f'{col}_offset_std'] = [std_off]
+            stats[f'{col}_offset_median'] = [med_off]
+            stats[f'{col}_offset_std'] = [std_off]
+
+        for col in NUMERIC_COLS:
+            vals: list[float] = wk_df[col].dropna().tolist() if col in wk_df else []
+            avg_val: float | None = sum(vals) / len(vals) if vals else None
+            med_val = _median(vals) if vals else None
+            std_val = _std(vals) if vals else None
+            stats[f'{col}_avg'] = [avg_val]
+            stats[f'{col}_median'] = [med_val]
+            stats[f'{col}_std'] = [std_val]
 
         week_stats_df = pd.DataFrame(stats)
         weekly_dfs[label] = week_stats_df
@@ -427,38 +464,64 @@ def compute_overall_stats(weekly_stats: Dict[str, pd.DataFrame]) -> pd.DataFrame
 
     if not combined.empty:
         for c in combined.columns:
-            if c.endswith('_avg') and combined[c].dtype == object:
-                first: object | None = next((v for v in combined[c] if v is not None), None)
-                if isinstance(first, str) and ':' in first:
+            if combined[c].dtype == object:
+                first = next((v for v in combined[c] if isinstance(v, str) and ':' in v), None)
+                if first is not None:
                     time_cols.append(c)
 
     overall: dict[str, float | str] = {}
 
-    # numeric columns
     for col in numeric_cols:
-        base = col[:-4] if col.endswith('_avg') else col
         values: list[float] = [v for v in combined[col] if v is not None]
-        mean_val: float = sum(values) / len(values) if values else 0
-        median_val = _median(values) if values else 0
-        overall[f'{col}'] = mean_val  # preserve original avg column
-        if median_val is not None:
-            overall[f'{base}_median'] = median_val
+        mean_val: float | None = sum(values) / len(values) if values else None
+        overall[col] = mean_val
+
+    if 'total_drinks' in combined.columns:
+        vals = [v for v in combined['total_drinks'] if v is not None]
+        overall['total_drinks_median'] = _median(vals) if vals else None
 
     # time columns
     for col in time_cols:
-        base = col[:-4]
         times: list[datetime.time] = [
             pd.to_datetime(t).time() for t in combined[col] if isinstance(t, str)
         ]
         if times:
             avg_t: datetime.time | None = _avg_time(times)
-            med_t: datetime.time | None = _median_time(times)
             if avg_t:
                 overall[col] = avg_t.strftime('%I:%M%p').lower()
-            if med_t:
-                overall[f'{base}_median'] = med_t.strftime('%I:%M%p').lower()
 
     return pd.DataFrame([overall])
+
+
+def _prepare_stats_for_output(df: pd.DataFrame, label_col: str | None = None) -> pd.DataFrame:
+    """Return ``df`` in vertical layout with rounded numeric values."""
+    if df.empty:
+        return df
+
+    def _round(v: object) -> object:
+        if isinstance(v, float):
+            try:
+                return float(f"{v:.3g}")
+            except Exception:
+                return v
+        return v
+
+    if label_col and label_col in df.columns:
+        rows = []
+        for _, r in df.iterrows():
+            label = r[label_col]
+            for col in df.columns:
+                if col == label_col:
+                    continue
+                rows.append({label_col: label, 'stat': col, 'value': _round(r[col])})
+        return pd.DataFrame(rows)
+
+    out = {'stat': [], 'value': []}
+    row = df.iloc[0]
+    for col in df.columns:
+        out['stat'].append(col)
+        out['value'].append(_round(row[col]))
+    return pd.DataFrame(out)
 
 
 
@@ -648,7 +711,7 @@ def _write_week_csv_from_df(
 
     os.makedirs(output_dir, exist_ok=True)
     rows = [
-        {col: df[col][i] if i < len(df[col]) else None for col in df.columns}
+        {col: df[col].iloc[i] if i < len(df[col]) else None for col in df.columns}
         for i in range(len(df['date']))
     ]
     rows.sort(key=lambda r: r['date'])
@@ -658,9 +721,7 @@ def _write_week_csv_from_df(
     with open(path, 'w', encoding='utf-8', newline='') as f:
         writer = csv.writer(f, lineterminator='\n', delimiter=delimiter)
         writer.writerow(header)
-        for col in ['wind_down_start_time', 'bed_time', 'wake_up_time', 'get_out_of_bed_time', 'alcohol_drinks']:
-            if col not in df.columns:
-                continue
+        for col in [c for c in df.columns if c != 'date']:
             question = COLUMN_TO_QUESTION.get(col, col)
             row = [question]
             for r in rows:
@@ -684,19 +745,27 @@ def export_weeks_from_dataframe(df: pd.DataFrame, label_col: str, output_dir: st
     df_stats['week_label'] = df[label_col]
     weekly_stats = compute_weekly_stats(df_stats)
 
+    combined_rows = []
     for label, wk_df in weekly_stats.items():
-        wk_df.to_csv(os.path.join(output_dir, f'stats-{label}.tsv'), sep='\t', index=False)
+        out_df = _prepare_stats_for_output(wk_df)
+        out_df.to_csv(os.path.join(output_dir, f'stats-{label}.tsv'), sep='\t', index=False)
+        out_df.insert(0, label_col, label)
+        combined_rows.append(out_df)
 
     for label, group in df.groupby(label_col):
         group.to_csv(os.path.join(output_dir, f'data-{label}.tsv'), sep='\t', index=False)
         _write_week_csv_from_df(group, output_dir, label)
+
+    if combined_rows:
+        combined = pd.concat(combined_rows, ignore_index=True)
+        combined.to_csv(os.path.join(output_dir, f'stats-by-{label_col}.tsv'), sep='\t', index=False)
 
 
 def export_questions_table(df: pd.DataFrame, path: str) -> None:
     """Write ``df`` to ``path`` in the same question-oriented layout."""
 
     rows = [
-        {col: df[col][i] if i < len(df[col]) else None for col in df.columns}
+        {col: df[col].iloc[i] if i < len(df[col]) else None for col in df.columns}
         for i in range(len(df['date']))
     ]
     rows.sort(key=lambda r: r['date'])
@@ -705,9 +774,7 @@ def export_questions_table(df: pd.DataFrame, path: str) -> None:
     with open(path, 'w', encoding='utf-8', newline='') as f:
         writer = csv.writer(f, lineterminator='\n', delimiter='\t')
         writer.writerow(header)
-        for col in ['wind_down_start_time', 'bed_time', 'wake_up_time', 'get_out_of_bed_time', 'alcohol_drinks']:
-            if col not in df.columns:
-                continue
+        for col in [c for c in df.columns if c != 'date']:
             question = COLUMN_TO_QUESTION.get(col, col)
             row = [question]
             for r in rows:
