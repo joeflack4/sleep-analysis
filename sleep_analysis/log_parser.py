@@ -24,12 +24,17 @@ _TIME_RE = re.compile(r'^(\d{1,2})(?::(\d{2}))?(am|pm)?$', re.IGNORECASE)
 
 
 def _parse_time(value: str) -> datetime.time | None:
+    """Return ``datetime.time`` parsed from ``value`` or ``None`` on failure."""
+
     if value in {'.', '', None}:
         return None
+
     value = value.strip()
+
     try:
         m = _TIME_RE.match(value)
         if m:
+            # Basic ``hh:mm`` with optional ``am``/``pm`` handling
             hour = int(m.group(1))
             minute = int(m.group(2) or 0)
             ampm = m.group(3)
@@ -40,31 +45,35 @@ def _parse_time(value: str) -> datetime.time | None:
                 if ampm == 'am' and hour == 12:
                     hour = 0
             return datetime.time(hour % 24, minute)
-        # Fallback to pandas to_datetime
+
+        # Fall back to ``pandas.to_datetime`` if regex parsing failed
         t = pd.to_datetime(value).time()
         return t
     except Exception:
+        # Any parsing failure results in ``None``
         return None
 
 
 def _parse_duration(value: str) -> float | None:
-    """Parse duration like '7:31' as hours."""
+    """Return number of hours represented by ``value`` or ``None``."""
+
     if value in {'.', '', None}:
         return None
+
     value = value.strip()
-    # If the value looks like a time of day with am/pm, interpret it as hours
-    # since midnight rather than failing with a ValueError. This allows values
-    # such as ``9:42pm`` to be parsed even when they were not recognised as
-    # time fields by the caller.
+
+    # Interpret values containing ``am``/``pm`` as a time-of-day offset
     m = _TIME_RE.match(value)
     if m and m.group(3):  # has am/pm
         t = _parse_time(value)
         if t is not None:
             return t.hour + t.minute / 60
+
     parts = value.split(':')
     if len(parts) == 2 and all(p.isdigit() for p in parts):
         h, m = parts
         return int(h) + int(m) / 60
+
     try:
         return float(value)
     except ValueError:
@@ -72,9 +81,13 @@ def _parse_duration(value: str) -> float | None:
 
 
 def _avg_time(times: List[datetime.time]) -> datetime.time | None:
+    """Return the average time of day from ``times``."""
+
+    # filter out ``None`` entries
     times = [t for t in times if t is not None]
     if not times:
         return None
+
     total_minutes = sum(t.hour * 60 + t.minute for t in times)
     avg_minutes = total_minutes / len(times)
     hour = int(avg_minutes // 60) % 24
@@ -83,9 +96,12 @@ def _avg_time(times: List[datetime.time]) -> datetime.time | None:
 
 
 def _median(values: List[float]) -> float | None:
+    """Return the median of ``values`` ignoring ``None`` entries."""
+
     values = sorted(v for v in values if v is not None)
     if not values:
         return None
+
     mid = len(values) // 2
     if len(values) % 2:
         return values[mid]
@@ -93,6 +109,8 @@ def _median(values: List[float]) -> float | None:
 
 
 def _median_time(times: List[datetime.time]) -> datetime.time | None:
+    """Return the median time from ``times``."""
+
     minutes = [t.hour * 60 + t.minute for t in times if t is not None]
     med = _median(minutes)
     if med is None:
@@ -103,23 +121,31 @@ def _median_time(times: List[datetime.time]) -> datetime.time | None:
 
 
 def _std(values: List[float]) -> float | None:
+    """Return standard deviation of ``values`` ignoring ``None``."""
+
     values = [v for v in values if v is not None]
     if not values:
         return None
+
     mean_val = sum(values) / len(values)
     var = sum((v - mean_val) ** 2 for v in values) / len(values)
     return math.sqrt(var)
 
 
 def _std_time(times: List[datetime.time]) -> float | None:
+    """Return standard deviation in minutes of ``times``."""
+
     minutes = [t.hour * 60 + t.minute for t in times if t is not None]
     return _std(minutes)
 
 
 def _avg_offset(times: List[datetime.time], expected: datetime.time) -> float | None:
+    """Return average absolute difference from ``expected``."""
+
     times = [t for t in times if t is not None]
     if not times:
         return None
+
     exp_minutes = expected.hour * 60 + expected.minute
     diffs = [abs((t.hour * 60 + t.minute) - exp_minutes) for t in times]
     return sum(diffs) / len(diffs)
@@ -163,24 +189,34 @@ def _parse_week_header(line: str) -> tuple[str, List[datetime.date]] | None:
 
 
 def parse_log(path: str) -> pd.DataFrame:
+    """Parse a sleep log text file and return a dataframe of daily records."""
+
     with open(path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
 
+    # ``records`` accumulates a dictionary per day which becomes our dataframe
     records: List[Dict] = []
+
+    # tracking variables for the current week block
     week_label = None
     week_days: List[datetime.date] = []
     week_data: Dict[str, List] = {}
 
+    # iterate over every line in the log
     for raw_line in lines:
         line = raw_line.rstrip('\n')
+
         if not line.strip() or line.strip().startswith('...'):
+            # skip blank lines and divider rows
             continue
+
         expanded = line.replace('\t', '    ')
         indent = len(expanded) - len(expanded.lstrip(' '))
         stripped = line.strip()
+
         if indent == 4:  # week header
             if week_label and week_days:
-                # flush previous week
+                # flush the previous week's accumulated data
                 for i, day in enumerate(week_days):
                     record = {'date': day, 'week_label': week_label}
                     for q, values in week_data.items():
@@ -188,6 +224,7 @@ def parse_log(path: str) -> pd.DataFrame:
                             record[q] = values[i]
                     records.append(record)
                 week_data = {}
+
             res = _parse_week_header(stripped)
             if res:
                 week_label, week_days = res
@@ -196,18 +233,21 @@ def parse_log(path: str) -> pd.DataFrame:
                 week_days = []
         elif indent == 8 and week_label:
             if '?' in stripped:
+                # question line containing data for the current week
                 q_part, values_part = stripped.split('?', 1)
                 question = (q_part + '?').strip()
                 values = values_part.strip().split()
                 col = QUESTION_TO_COLUMN.get(question)
                 parsed_vals = []
+
+                # parse each value for the question column
                 for v in values:
                     if col and 'time' in col:
                         parsed_vals.append(_parse_time(v))
                     elif col == 'alcohol_drinks':
                         parsed_vals.append(float(v) if v != '.' else 0.0)
                     else:
-                        # generic: try duration or float
+                        # generic: try duration or numeric value
                         val = _parse_duration(v)
                         if val is None:
                             try:
@@ -222,6 +262,7 @@ def parse_log(path: str) -> pd.DataFrame:
             continue
 
     if week_label and week_days:
+        # flush the final week after processing all lines
         for i, day in enumerate(week_days):
             record = {'date': day, 'week_label': week_label}
             for q, values in week_data.items():
@@ -230,7 +271,8 @@ def parse_log(path: str) -> pd.DataFrame:
             records.append(record)
 
     df = pd.DataFrame(records)
-    # Detect duplicate dates which would indicate a parsing bug in the log.
+
+    # Detect duplicate dates which would indicate a parsing bug in the log
     if len(df):
         seen = set()
         dup_set = set()
@@ -248,52 +290,71 @@ def parse_log(path: str) -> pd.DataFrame:
 
 
 def compute_weekly_stats(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+    """Return per-week statistics grouped by ``week_label``."""
+
     weekly_dfs = {}
     if df.empty or 'week_label' not in df.columns:
         return weekly_dfs
+
+    # iterate over each week block in the dataframe
     for label, wk_df in df.groupby('week_label'):
         stats: Dict[str, List] = {}
+        # total number of alcoholic drinks for the week
         stats['total_drinks'] = [wk_df.get('alcohol_drinks', pd.Series(dtype=float)).fillna(0).sum()]
+
+        # process all time-based metrics
         for col in ['wind_down_start_time', 'bed_time', 'wake_up_time', 'get_out_of_bed_time']:
             times = wk_df[col].dropna().tolist() if col in wk_df else []
             if not times:
                 continue
+
             avg_t = _avg_time(times)
             med_t = _median_time(times)
             std_t = _std_time(times)
+
             if avg_t:
                 stats[f'{col}_avg'] = [avg_t.strftime('%I:%M%p').lower()]
             if med_t:
                 stats[f'{col}_median'] = [med_t.strftime('%I:%M%p').lower()]
             if std_t is not None:
                 stats[f'{col}_std'] = [std_t]
+
             offsets = [abs((t.hour * 60 + t.minute) - (EXPECTED_TIMES[col].hour * 60 + EXPECTED_TIMES[col].minute)) for t in times]
             avg_off = sum(offsets) / len(offsets)
             med_off = _median(offsets)
             std_off = _std(offsets)
+
             stats[f'{col}_offset_avg'] = [avg_off]
             if med_off is not None:
                 stats[f'{col}_offset_median'] = [med_off]
             if std_off is not None:
                 stats[f'{col}_offset_std'] = [std_off]
+
         week_stats_df = pd.DataFrame(stats)
         weekly_dfs[label] = week_stats_df
+
     return weekly_dfs
 
 
 def compute_overall_stats(weekly_stats: Dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """Aggregate ``weekly_stats`` into a single overall statistics dataframe."""
+
     if not weekly_stats:
         return pd.DataFrame()
+
     combined = pd.concat(weekly_stats.values(), ignore_index=True)
     numeric_cols = combined.select_dtypes(include='number').columns
     time_cols = []
+
     if not combined.empty:
         for c in combined.columns:
             if c.endswith('_avg') and combined[c].dtype == object:
                 first = next((v for v in combined[c] if v is not None), None)
                 if isinstance(first, str) and ':' in first:
                     time_cols.append(c)
+
     overall = {}
+
     # numeric columns
     for col in numeric_cols:
         base = col[:-4] if col.endswith('_avg') else col
@@ -303,6 +364,7 @@ def compute_overall_stats(weekly_stats: Dict[str, pd.DataFrame]) -> pd.DataFrame
         overall[f'{col}'] = mean_val  # preserve original avg column
         if median_val is not None:
             overall[f'{base}_median'] = median_val
+
     # time columns
     for col in time_cols:
         base = col[:-4]
@@ -314,5 +376,6 @@ def compute_overall_stats(weekly_stats: Dict[str, pd.DataFrame]) -> pd.DataFrame
                 overall[col] = avg_t.strftime('%I:%M%p').lower()
             if med_t:
                 overall[f'{base}_median'] = med_t.strftime('%I:%M%p').lower()
+
     return pd.DataFrame([overall])
 

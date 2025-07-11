@@ -30,8 +30,10 @@ def run_analysis(logfile: str, output_dir: str, label_files: bool = False) -> No
     When ``label_files`` is ``True`` the output filenames will include the date
     range contained in the log.
     """
+    # parse the raw log file into a dataframe
     df = parse_log(logfile)
 
+    # ensure the output directory exists
     os.makedirs(output_dir, exist_ok=True)
 
     df['week_by_log_dates'] = df.groupby('week_label')['date'].transform(
@@ -46,6 +48,7 @@ def run_analysis(logfile: str, output_dir: str, label_files: bool = False) -> No
     data_name = 'data.tsv'
     stats_name = 'stats.tsv'
     if label_files:
+        # optionally include the date range in the filenames
         data_name = f'data-{range_label}.tsv'
         stats_name = f'stats-{range_label}.tsv'
 
@@ -54,6 +57,7 @@ def run_analysis(logfile: str, output_dir: str, label_files: bool = False) -> No
     weekly_stats = compute_weekly_stats(df)
 
     if not label_files:
+        # create additional stats using date ranges found in the log itself
         log_rows = []
         for label, wk_df in weekly_stats.items():
             start = df[df['week_label'] == label]['date'].min()
@@ -62,6 +66,7 @@ def run_analysis(logfile: str, output_dir: str, label_files: bool = False) -> No
             out_df = wk_df.copy()
             out_df.insert(0, 'week_by_log_dates', new_label)
             log_rows.append(out_df)
+
         if log_rows:
             by_log_df = pd.concat(log_rows, ignore_index=True)
             by_log_df.to_csv(
@@ -70,6 +75,7 @@ def run_analysis(logfile: str, output_dir: str, label_files: bool = False) -> No
                 index=False,
             )
 
+    # final summary across all weeks
     overall = compute_overall_stats(weekly_stats)
     overall.to_csv(os.path.join(output_dir, stats_name), sep='\t', index=False)
 
