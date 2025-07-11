@@ -86,13 +86,24 @@ def run_analysis(logfile: str, output_dir: str, label_files: bool = False) -> No
             log_rows.append(out_df)
 
         if log_rows:
-            by_log_df: pd.DataFrame = pd.concat(log_rows, ignore_index=True)
-            out_df = _prepare_stats_for_output(by_log_df, 'week_by_log_dates')
-            out_df.to_csv(
-                os.path.join(output_dir, 'stats-by-log-date-ranges.tsv'),
-                sep='\t',
-                index=False,
-            )
+            # Filter out completely empty dataframes to avoid concat warnings
+            valid_rows: list[pd.DataFrame] = []
+            for r in log_rows:
+                try:
+                    empty_df = r.dropna(how='all').empty
+                except Exception:
+                    empty_df = r.empty or all(all(val is None for val in r[col]) for col in r.columns)
+                if not empty_df:
+                    valid_rows.append(r)
+
+            if valid_rows:
+                by_log_df: pd.DataFrame = pd.concat(valid_rows, ignore_index=True)
+                out_df = _prepare_stats_for_output(by_log_df, 'week_by_log_dates')
+                out_df.to_csv(
+                    os.path.join(output_dir, 'stats-by-log-date-ranges.tsv'),
+                    sep='\t',
+                    index=False,
+                )
 
     # final summary across all weeks
     overall = compute_overall_stats(weekly_stats)
