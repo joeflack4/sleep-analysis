@@ -430,6 +430,7 @@ def export_single_weeks_csv(logfile: str, output_dir: str) -> None:
     week_label = None
     week_days: List[datetime.date] = []
     week_data: Dict[str, List[str]] = {}
+    week_lines: list[str] = []
 
     for raw_line in lines:
         line = raw_line.rstrip('\n')
@@ -442,26 +443,36 @@ def export_single_weeks_csv(logfile: str, output_dir: str) -> None:
 
         if _WEEK_HEADER_RE.match(stripped):
             if week_label and week_days:
-                _write_week_csv(output_dir, week_days, week_data)
+                _write_week_csv(output_dir, week_days, week_data, "".join(week_lines))
                 week_data = {}
+                week_lines = []
             res = _parse_week_header(stripped)
             if res:
                 week_label, week_days = res
+                week_lines = [raw_line]
             else:
                 week_label = None
                 week_days = []
+                week_lines = []
         elif indent >= 4 and week_label:
             if '?' in stripped:
                 q_part, values_part = stripped.split('?', 1)
                 question = (q_part + '?').strip()
                 values = values_part.strip().split()
                 week_data[question] = values
+                week_lines.append(' ' * indent + question + '\n')
+            else:
+                week_lines.append(raw_line)
+        elif week_label:
+            week_lines.append(raw_line)
 
     if week_label and week_days:
-        _write_week_csv(output_dir, week_days, week_data)
+        _write_week_csv(output_dir, week_days, week_data, "".join(week_lines))
 
 
-def save_week_log_annotations_as_markdown(log_text: str) -> None:
+def save_week_log_annotations_as_markdown(
+    log_text: str, output_dir: str = "output/single-weeks-by-log-range"
+) -> None:
     """
     Extracts indented annotations under each question in a weekly sleep log snippet and
     saves them as a markdown file.
@@ -473,8 +484,8 @@ def save_week_log_annotations_as_markdown(log_text: str) -> None:
 
     https://chatgpt.com/c/68709a0e-5684-800c-b59e-3709d6e58e56
 
-    The output markdown file is written to:
-      output/single-weeks-by-log-range/annotations-YYYY--MM-DD--MM2-DD2.md
+    The output markdown file is written to ``output_dir`` using the pattern
+      ``annotations-YYYY--MM-DD--MM2-DD2.md``
     where YYYY is the current year, MM-DD is taken from the header's date range,
     and if the second date omits the month, it inherits the first month's value.
     """
@@ -497,10 +508,9 @@ def save_week_log_annotations_as_markdown(log_text: str) -> None:
     year = datetime.date.today().year
     mm1, dd1 = month1.zfill(2), day1.zfill(2)
     mm2, dd2 = month2.zfill(2), day2.zfill(2)
-    out_dir = 'output/single-weeks-by-log-range'
-    os.makedirs(out_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
     filename = f"annotations-{year}--{mm1}-{dd1}--{mm2}-{dd2}.md"
-    filepath = os.path.join(out_dir, filename)
+    filepath = os.path.join(output_dir, filename)
 
     # Extract annotations
     annotations = {}
@@ -545,7 +555,9 @@ def save_week_log_annotations_as_markdown(log_text: str) -> None:
 
 
 
-def _write_week_csv(output_dir: str, days: List[datetime.date], data: Dict[str, List[str]]) -> None:
+def _write_week_csv(
+    output_dir: str, days: List[datetime.date], data: Dict[str, List[str]], week_text: str
+) -> None:
     os.makedirs(output_dir, exist_ok=True)
     start = days[0]
     end = days[-1]
@@ -561,4 +573,7 @@ def _write_week_csv(output_dir: str, days: List[datetime.date], data: Dict[str, 
                 val = values[i] if i < len(values) else ''
                 row.append(_format_raw_value(val))
             writer.writerow(row)
+
+    # Save annotations for this week
+    save_week_log_annotations_as_markdown(week_text, output_dir)
 
