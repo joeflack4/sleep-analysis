@@ -15,6 +15,8 @@ from sleep_analysis.log_parser import (
     _prepare_stats_for_output,
     _filter_non_empty_frames,
 )
+from sleep_analysis.csv_parser import parse_google_sheets_csv
+from sleep_analysis.google_sheets_helper import sheets_url_to_csv
 
 
 def _format_range(start: datetime.date, end: datetime.date) -> str:
@@ -29,14 +31,23 @@ def _week_range_for_date(d: datetime.date) -> tuple[datetime.date, datetime.date
     return start, end
 
 
-def run_analysis(logfile: str, output_dir: str, label_files: bool = False) -> None:
+def run_analysis(logfile: str, output_dir: str, label_files: bool = False, input_format: str = 'txt') -> None:
     """Parse ``logfile`` and write analysis outputs to ``output_dir``.
 
     When ``label_files`` is ``True`` the output filenames will include the date
     range contained in the log.
+    
+    Args:
+        logfile: Path to the input file
+        output_dir: Directory for output files  
+        label_files: Whether to include date ranges in filenames
+        input_format: Format of input file ('txt' for text logs, 'csv' for Google Sheets CSV)
     """
     # parse the raw log file into a dataframe
-    df = parse_log(logfile)
+    if input_format == 'csv':
+        df = parse_google_sheets_csv(logfile)
+    else:
+        df = parse_log(logfile)
 
     # ensure the output directory exists
     os.makedirs(output_dir, exist_ok=True)
@@ -110,9 +121,30 @@ def main():
     parser.add_argument('--logfile', default='input/log.txt', help='Path to sleep log txt file')
     parser.add_argument('--output-dir', default='output', help='Directory for output files')
     parser.add_argument('--single-week-logfile', default='input/log-single-week.txt', help='Optional single week log file')
+    parser.add_argument('--csv-file', help='Path to Google Sheets CSV export file')
+    parser.add_argument('--sheets-url', help='Google Sheets URL (will download as CSV)')
+    parser.add_argument('--input-format', choices=['txt', 'csv'], default='txt', 
+                       help='Input format: txt for text logs, csv for Google Sheets CSV')
     args = parser.parse_args()
 
-    run_analysis(args.logfile, args.output_dir, label_files=False)
+    # Determine input file and format
+    if args.sheets_url:
+        # Download Google Sheets as CSV
+        print(f"Downloading Google Sheets data from: {args.sheets_url}")
+        csv_path = sheets_url_to_csv(args.sheets_url, "/tmp", "downloaded_sleep_data.csv")
+        if csv_path is None:
+            print("Error: Failed to download Google Sheets data")
+            return
+        input_file = csv_path
+        input_format = 'csv'
+    elif args.csv_file:
+        input_file = args.csv_file
+        input_format = 'csv'
+    else:
+        input_file = args.logfile
+        input_format = args.input_format
+
+    run_analysis(input_file, args.output_dir, label_files=False, input_format=input_format)
 
     single_week_out = os.path.join(args.output_dir, 'single-week')
     if os.path.exists(args.single_week_logfile):
