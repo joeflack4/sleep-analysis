@@ -1,6 +1,7 @@
 """Analyze sleep data"""
 import argparse
 import os
+import tempfile
 
 import datetime
 import pandas as pd
@@ -15,6 +16,15 @@ from sleep_analysis.log_parser import (
     _prepare_stats_for_output,
     _filter_non_empty_frames,
 )
+
+try:
+    from sleep_analysis.google_sheets_integration import (
+        fetch_google_forms_data,
+        save_google_forms_as_log,
+        GOOGLE_SHEETS_AVAILABLE
+    )
+except ImportError:
+    GOOGLE_SHEETS_AVAILABLE = False
 
 
 def _format_range(start: datetime.date, end: datetime.date) -> str:
@@ -104,14 +114,66 @@ def run_analysis(logfile: str, output_dir: str, label_files: bool = False) -> No
     out_overall.to_csv(os.path.join(output_dir, stats_name), sep='\t', index=False, lineterminator="\n")
 
 
+def run_google_sheets_analysis(
+    sheets_url: str,
+    output_dir: str,
+    credentials_path: str = 'credentials.json'
+) -> None:
+    """Fetch Google Sheets data and run analysis on it.
+    
+    Args:
+        sheets_url: Google Sheets URL
+        output_dir: Directory for output files
+        credentials_path: Path to Google API credentials
+    """
+    if not GOOGLE_SHEETS_AVAILABLE:
+        raise ImportError(
+            "Google Sheets integration not available. "
+            "Run: pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib"
+        )
+    
+    print(f"Fetching data from Google Sheets: {sheets_url}")
+    
+    # Create a temporary log file from Google Sheets data
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as temp_file:
+        temp_log_path = temp_file.name
+    
+    try:
+        # Convert Google Sheets data to log format
+        save_google_forms_as_log(sheets_url, temp_log_path, credentials_path)
+        print(f"Converted Google Sheets data to temporary log: {temp_log_path}")
+        
+        # Run standard analysis on the converted data
+        run_analysis(temp_log_path, output_dir, label_files=False)
+        
+        print(f"Analysis complete. Results saved to: {output_dir}")
+        
+    finally:
+        # Clean up temporary file
+        if os.path.exists(temp_log_path):
+            os.unlink(temp_log_path)
+
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Sleep log analysis")
     parser.add_argument('--logfile', default='input/log.txt', help='Path to sleep log txt file')
     parser.add_argument('--output-dir', default='output', help='Directory for output files')
     parser.add_argument('--single-week-logfile', default='input/log-single-week.txt', help='Optional single week log file')
+    
+    # Google Sheets integration options
+    parser.add_argument('--google-sheets-url', help='Google Sheets URL to fetch data from')
+    parser.add_argument('--credentials-path', default='credentials.json', 
+                       help='Path to Google API credentials JSON file')
+    
     args = parser.parse_args()
 
+    # Handle Google Sheets input
+    if args.google_sheets_url:
+        run_google_sheets_analysis(args.google_sheets_url, args.output_dir, args.credentials_path)
+        return
+    
+    # Handle standard log file input
     run_analysis(args.logfile, args.output_dir, label_files=False)
 
     single_week_out = os.path.join(args.output_dir, 'single-week')
