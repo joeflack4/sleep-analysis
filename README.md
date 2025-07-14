@@ -61,3 +61,53 @@ Below is a truncated example of a weekly CSV produced in `single-weeks-by-log-ra
 ```
 
 These values correspond to the questions and dates in the original log file.
+
+## Google Sheets Integration
+
+The tool now supports fetching sleep data directly from Google Sheets (e.g., Google Forms responses).
+
+### Setup
+
+1. Install additional dependencies:
+```bash
+pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
+```
+
+2. Set up Google Sheets API credentials:
+   - Go to the [Google Cloud Console](https://console.cloud.google.com/)
+   - Create a new project or select an existing one
+   - Enable the Google Sheets API
+   - Create credentials (OAuth 2.0 client ID) for a desktop application
+   - Download the credentials JSON file and save it as `credentials.json`
+
+### Usage
+
+```bash
+python -m sleep_analysis --google-sheets-url "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit" --output-dir output
+```
+
+The tool will:
+1. Authenticate with Google (opens browser for first-time setup)
+2. Fetch data from your Google Sheets
+3. Automatically map Google Form questions to sleep analysis questions
+4. Convert the data to the standard format
+5. Run the full analysis pipeline
+
+### Google Form Question Mapping
+
+The integration automatically maps common Google Form questions to the standard sleep questions:
+
+- **Wind down time**: Questions containing "wind down" and "time"
+- **Bedtime**: Questions about "bed time" and "commit to sleep"
+- **Wake up time**: Questions about "wake up" and "time"
+- **Sleep quality**: Questions about "sleep quality" (1-10 scale)
+- **Alcohol consumption**: Questions about "alcohol" and "drinks"
+- And many more...
+
+### Supported Data Formats
+
+The Google Sheets integration handles various response formats:
+- Times: "2:30 AM", "14:30", "2:30pm"
+- Durations: "7:30" (hours:minutes), "7.5" (decimal hours)
+- Numbers: Ratings, counts, etc.
+- Text: Free-form responses with "|" separators for multiple values
