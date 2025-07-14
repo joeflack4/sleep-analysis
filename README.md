@@ -41,6 +41,40 @@ Within each week the questions of interest are indented two levels and followed 
 
 A single dot (`.`) represents a missing value. Additional notes may appear indented beneath a question; these are ignored by the parser.
 
+## Google Sheets Integration
+
+The tool now supports Google Forms data stored in Google Sheets. This allows you to collect sleep data through forms and analyze it with the same statistical methods.
+
+### Supported Input Formats
+
+1. **Google Sheets URL**: Directly analyze data from a Google Sheets spreadsheet
+2. **CSV Export**: Use a CSV file exported from Google Sheets
+3. **Custom Question Mapping**: Map your form questions to the analysis columns
+
+### Usage Examples
+
+#### Direct Google Sheets URL
+```bash
+python -m sleep_analysis --sheets-url "https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID/edit" --output-dir output
+```
+
+#### CSV File
+```bash
+python -m sleep_analysis --csv-file exported_sleep_data.csv --output-dir output
+```
+
+### Question Mapping
+
+The CSV parser automatically maps common sleep-related questions to analysis columns. The default mappings include:
+
+- "What time start winding down?" → wind_down_start_time
+- "What time did you get into bed & commit to sleep?" → bed_time  
+- "What time did you wake up?" → wake_up_time
+- "Quality of your sleep (1-10)?" → sleep_quality
+- And many more...
+
+If your Google Form uses different question text, you can customize the mapping by modifying the `GOOGLE_FORMS_QUESTION_MAP` in `csv_parser.py`.
+
 ## Output
 
 Running the analysis creates several files in the output directory:

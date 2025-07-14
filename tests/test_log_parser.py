@@ -26,6 +26,15 @@ class _Series(list):
     def tolist(self):
         return list(self)
 
+    def unique(self):
+        seen = set()
+        result = []
+        for x in self:
+            if x not in seen:
+                seen.add(x)
+                result.append(x)
+        return result
+
     def mean(self):
         vals = [x for x in self if x is not None]
         return sum(vals) / len(vals) if vals else 0
